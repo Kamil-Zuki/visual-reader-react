@@ -25,6 +25,8 @@ export default function Sidebar() {
     setExpandedChapters(next);
   };
 
+  const chapters = currentBook?.chapters || currentBook?.structure || [];
+
   return (
     <aside className="w-80 bg-bgSidebar border-r border-borderColor flex flex-col shrink-0">
       <div className="p-4 border-b border-borderColor">
@@ -38,9 +40,10 @@ export default function Sidebar() {
       </div>
       
       <div className="flex-1 overflow-y-auto py-2">
-        {currentBook.structure.map((chapter, cIdx) => {
+        {chapters.map((chapter, cIdx) => {
           const isExpanded = expandedChapters.has(cIdx);
           const isActive = activeChapterIdx === cIdx;
+          const sections = chapter.sections || [];
           
           return (
             <div key={cIdx} className="mb-1">
@@ -65,13 +68,13 @@ export default function Sidebar() {
                   </span>
                 </div>
                 <span className="text-xs text-textMuted font-mono shrink-0 ml-2">
-                  {chapter.sections.length}
+                  {sections.length}
                 </span>
               </div>
 
-              {isExpanded && chapter.sections.length > 0 && (
+              {isExpanded && sections.length > 0 && (
                 <div className="mt-1">
-                  {chapter.sections.map((sec, sIdx) => {
+                  {sections.map((sec, sIdx) => {
                     const isSecActive = isActive && activeSectionIdx === sIdx;
                     return (
                       <div 

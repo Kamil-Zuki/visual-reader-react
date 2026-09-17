@@ -21,25 +21,27 @@ function App() {
       await openDB();
       const books = await getAllBooksFromDB();
       
+      const defaultBookData = {
+        id: 'default_ddia',
+        title: BOOK_DATA?.title || 'Designing Data-Intensive Applications',
+        author: BOOK_DATA?.author || 'Martin Kleppmann',
+        chapters: BOOK_DATA?.chapters || [],
+        isDefault: true
+      };
+
       let defaultExists = books.find(b => b.id === 'default_ddia');
-      if (!defaultExists) {
-        console.log('Loading default DDIA book into DB...');
-        await saveBookToDB({
-          id: 'default_ddia',
-          title: 'DDIA (Martin Kleppmann)',
-          structure: BOOK_DATA.structure
-        });
+      // If doesn't exist or has empty/corrupted chapters, re-save
+      if (!defaultExists || (!defaultExists.chapters && !defaultExists.structure)) {
+        console.log('Saving DDIA book into DB...');
+        await saveBookToDB(defaultBookData);
       }
 
-      if (currentBookId) {
-        const book = await getBookByIdFromDB(currentBookId);
-        if (book) {
-          setCurrentBook(book, book.id);
-        } else {
-          const defaultBook = await getBookByIdFromDB('default_ddia');
-          setCurrentBook(defaultBook, 'default_ddia');
-        }
+      let targetId = currentBookId || 'default_ddia';
+      let book = await getBookByIdFromDB(targetId);
+      if (!book || (!book.chapters && !book.structure)) {
+        book = defaultBookData;
       }
+      setCurrentBook(book, book.id);
     };
     initApp();
   }, []);

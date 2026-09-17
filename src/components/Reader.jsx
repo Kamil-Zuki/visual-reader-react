@@ -5,15 +5,21 @@ export default function Reader() {
   const { currentBook, activeChapterIdx, activeSectionIdx } = useStore();
   const contentRef = useRef(null);
 
+  const chapters = currentBook?.chapters || currentBook?.structure || [];
+  const activeChapter = chapters[activeChapterIdx];
+  const section = activeChapter?.sections?.[activeSectionIdx];
+  const chapterTitle = activeChapter?.title;
+
   useEffect(() => {
     if (!currentBook) return;
-    const section = currentBook.structure[activeChapterIdx]?.sections[activeSectionIdx];
     if (section && contentRef.current) {
       contentRef.current.innerHTML = section.html;
       // Scroll to top when section changes
-      contentRef.current.parentElement.scrollTop = 0;
+      if (contentRef.current.parentElement) {
+        contentRef.current.parentElement.scrollTop = 0;
+      }
     }
-  }, [currentBook, activeChapterIdx, activeSectionIdx]);
+  }, [currentBook, activeChapterIdx, activeSectionIdx, section]);
 
   if (!currentBook) {
     return (
@@ -24,9 +30,6 @@ export default function Reader() {
       </main>
     );
   }
-
-  const section = currentBook.structure[activeChapterIdx]?.sections[activeSectionIdx];
-  const chapterTitle = currentBook.structure[activeChapterIdx]?.title;
 
   return (
     <main className="flex-1 bg-bgMain relative overflow-y-auto custom-scrollbar scroll-smooth p-10">
