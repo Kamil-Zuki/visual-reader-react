@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, DEFAULT_PROMPTS } from '../store/useStore';
-import { Lightbulb, Network, FileText, Maximize2, Trash2, Loader2, Sparkles, Plus, Edit2 } from 'lucide-react';
+import { Lightbulb, Network, FileText, Maximize2, Trash2, Loader2, Sparkles, Plus, Edit2, PanelRightClose } from 'lucide-react';
 import mermaid from 'mermaid';
 import DiagramModal from './DiagramModal';
 import CommandModal from './CommandModal';
@@ -31,7 +31,8 @@ const LANGUAGE_NAMES = {
 export default function AIInspector() {
   const { 
     apiKey, model, language, prompts, setSettingsOpen,
-    customCommands, addCustomCommand, updateCustomCommand, deleteCustomCommand
+    customCommands, addCustomCommand, updateCustomCommand, deleteCustomCommand,
+    inspectorWidth, setInspectorOpen
   } = useStore();
   
   const [selectedText, setSelectedText] = useState('');
@@ -195,30 +196,43 @@ export default function AIInspector() {
   const [showInput, setShowInput] = useState(false);
 
   return (
-    <aside className="w-full md:w-[450px] bg-bgSidebar md:border-l border-borderColor flex flex-col shrink-0 h-full pb-16 md:pb-0">
+    <aside 
+      style={{ width: `${inspectorWidth}px` }}
+      className="w-full md:w-auto bg-bgSidebar md:border-l border-borderColor flex flex-col shrink-0 h-full pb-16 md:pb-0"
+    >
       {/* Header */}
-      <div className="h-14 border-b border-borderColor flex items-center justify-between px-4 shrink-0 font-semibold text-sm">
+      <div className="h-14 border-b border-borderColor flex items-center justify-between px-3 md:px-4 shrink-0 font-semibold text-sm">
         <div className="flex items-center gap-2 text-white">
           <Network size={16} className="text-primaryGlow" />
-          Визуальный инспектор
+          <span className="truncate">Визуальный инспектор</span>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <button
             onClick={() => setShowInput(!showInput)}
             className="text-xs text-primaryGlow hover:text-white transition-colors bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded"
           >
-            {showInput ? 'Скрыть ввод' : '+ Свой текст'}
+            {showInput ? 'Скрыть' : '+ Текст'}
           </button>
           {cards.length > 0 && (
             <button 
               onClick={() => setCards([])}
-              className="text-xs text-textDim hover:text-red-400 transition-colors"
+              className="text-xs text-textDim hover:text-red-400 transition-colors px-1"
+              title="Очистить все карточки"
             >
-              Очистить все
+              Очистить
             </button>
           )}
+          {/* Close/collapse button on desktop */}
+          <button
+            onClick={() => setInspectorOpen(false)}
+            className="hidden md:flex p-1 rounded-lg hover:bg-white/10 text-textDim hover:text-white transition-colors cursor-pointer ml-1"
+            title="Скрыть панель инспектора"
+          >
+            <PanelRightClose size={17} />
+          </button>
         </div>
       </div>
+
 
       <div className="flex-1 p-3 sm:p-4 overflow-y-auto relative custom-scrollbar flex flex-col gap-4">
         {/* Custom text input box */}

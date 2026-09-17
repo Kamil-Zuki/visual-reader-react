@@ -1,15 +1,25 @@
 import React from 'react';
 import { useStore } from '../store/useStore';
-import { ChevronDown, ChevronRight, FileText } from 'lucide-react';
+import { ChevronDown, ChevronRight, FileText, PanelLeftClose } from 'lucide-react';
 
 export default function Sidebar() {
-  const { currentBook, activeChapterIdx, activeSectionIdx, setActiveChapter } = useStore();
+  const { 
+    currentBook, 
+    activeChapterIdx, 
+    activeSectionIdx, 
+    setActiveChapter, 
+    sidebarWidth, 
+    setSidebarOpen 
+  } = useStore();
   const [expandedChapters, setExpandedChapters] = React.useState(new Set([0]));
   const [searchQuery, setSearchQuery] = React.useState('');
 
   if (!currentBook) {
     return (
-      <aside className="w-full md:w-80 bg-bgSidebar md:border-r border-borderColor flex flex-col shrink-0 p-4">
+      <aside 
+        style={{ width: `${sidebarWidth}px` }}
+        className="w-full md:w-auto bg-bgSidebar md:border-r border-borderColor flex flex-col shrink-0 p-4"
+      >
         <div className="animate-pulse flex flex-col gap-4">
           <div className="h-4 bg-white/5 rounded w-3/4"></div>
           <div className="h-4 bg-white/5 rounded w-1/2"></div>
@@ -42,26 +52,39 @@ export default function Sidebar() {
   }).filter(Boolean);
 
   return (
-    <aside className="w-full md:w-80 bg-bgSidebar md:border-r border-borderColor flex flex-col shrink-0 h-full">
-      <div className="p-3 md:p-4 border-b border-borderColor">
-        <div className="relative">
+    <aside 
+      style={{ width: `${sidebarWidth}px` }}
+      className="w-full md:w-auto bg-bgSidebar md:border-r border-borderColor flex flex-col shrink-0 h-full select-none"
+    >
+      <div className="p-3 md:p-3.5 border-b border-borderColor flex items-center gap-2">
+        <div className="relative flex-1">
           <input 
             type="text" 
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            placeholder="Поиск по главам и разделам..." 
-            className="w-full bg-black/40 border border-borderColor rounded-lg py-2 px-3 text-sm text-textMain outline-none focus:border-primary transition-colors"
+            placeholder="Поиск по главам..." 
+            className="w-full bg-black/40 border border-borderColor rounded-lg py-1.5 pl-2.5 pr-7 text-xs text-textMain outline-none focus:border-primary transition-colors"
           />
           {searchQuery && (
             <button 
               onClick={() => setSearchQuery('')}
-              className="absolute right-2.5 top-2.5 text-xs text-textDim hover:text-white"
+              className="absolute right-2 top-2 text-xs text-textDim hover:text-white"
             >
               ✕
             </button>
           )}
         </div>
+
+        {/* Close/collapse button for desktop */}
+        <button
+          onClick={() => setSidebarOpen(false)}
+          className="hidden md:flex p-1.5 rounded-lg hover:bg-white/10 text-textDim hover:text-white transition-colors cursor-pointer shrink-0"
+          title="Скрыть панель оглавления"
+        >
+          <PanelLeftClose size={17} />
+        </button>
       </div>
+
       
       <div className="flex-1 overflow-y-auto py-2 custom-scrollbar">
         {filteredChapters.length === 0 ? (

@@ -2,23 +2,56 @@ import React, { useEffect, useState } from 'react';
 import { useStore } from './store/useStore';
 import { openDB, getAllBooksFromDB, getBookByIdFromDB, saveBookToDB } from './utils/db';
 import { BOOK_DATA } from './data/book_data';
-import { BookOpen, Settings, Library, List, Sparkles, BookOpenText, Download } from 'lucide-react';
+import { 
+  BookOpen, 
+  Settings, 
+  Library, 
+  List, 
+  Sparkles, 
+  BookOpenText, 
+  Download,
+  PanelLeft,
+  PanelRight,
+  PanelLeftOpen,
+  PanelRightOpen
+} from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
 import Reader from './components/Reader';
 import AIInspector from './components/AIInspector';
 import LibraryModal from './components/LibraryModal';
 import SettingsModal from './components/SettingsModal';
+import PanelResizer from './components/PanelResizer';
 
 function App() {
   const { 
     currentBook, setCurrentBook, currentBookId,
     setLibraryOpen, setSettingsOpen, apiKey,
-    mobileTab, setMobileTab
+    mobileTab, setMobileTab,
+    isSidebarOpen, toggleSidebar, setSidebarOpen, sidebarWidth, setSidebarWidth,
+    isInspectorOpen, toggleInspector, setInspectorOpen, inspectorWidth, setInspectorWidth
   } = useStore();
 
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
+
+  // Keyboard shortcuts: Ctrl+B (sidebar), Ctrl+I (inspector)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
+
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'b') {
+        e.preventDefault();
+        toggleSidebar();
+      }
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        toggleInspector();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [toggleSidebar, toggleInspector]);
 
   useEffect(() => {
     // Check if already in standalone PWA mode
@@ -86,6 +119,19 @@ function App() {
       {/* Header */}
       <header className="h-14 bg-bgSidebar border-b border-borderColor flex items-center justify-between px-3 sm:px-4 shrink-0 z-30">
         <div className="flex items-center gap-2 sm:gap-3 overflow-hidden">
+          {/* Sidebar toggle button on desktop */}
+          <button
+            onClick={toggleSidebar}
+            className={`p-1.5 rounded-lg border transition-colors cursor-pointer hidden md:flex items-center justify-center shrink-0 ${
+              isSidebarOpen 
+                ? 'bg-primary/15 border-primary/40 text-primaryGlow' 
+                : 'bg-white/5 border-white/10 text-textDim hover:text-white'
+            }`}
+            title={isSidebarOpen ? 'Скрыть оглавление (Ctrl+B)' : 'Показать оглавление (Ctrl+B)'}
+          >
+            <PanelLeft size={16} />
+          </button>
+
           <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primaryGlow flex items-center justify-center text-white shrink-0 shadow-sm shadow-primary/20">
             <BookOpen size={18} />
           </div>
@@ -110,9 +156,23 @@ function App() {
             </button>
           )}
 
+          {/* Inspector toggle button on desktop */}
+          <button
+            onClick={toggleInspector}
+            className={`px-2 sm:px-2.5 py-1.5 text-xs rounded-md border transition-colors cursor-pointer hidden md:flex items-center gap-1.5 ${
+              isInspectorOpen 
+                ? 'bg-primary/15 border-primary/40 text-primaryGlow font-medium' 
+                : 'bg-white/5 border-white/10 text-textDim hover:text-white'
+            }`}
+            title={isInspectorOpen ? 'Скрыть ИИ-инспектор (Ctrl+I)' : 'Показать ИИ-инспектор (Ctrl+I)'}
+          >
+            <PanelRight size={14} />
+            <span className="hidden lg:inline">Инспектор</span>
+          </button>
+
           <button 
             onClick={() => setLibraryOpen(true)} 
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
             title="Библиотека книг"
           >
             <Library size={14} /> 
@@ -130,7 +190,7 @@ function App() {
 
           <button 
             onClick={() => setSettingsOpen(true)} 
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors"
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
             title="Настройки"
           >
             <Settings size={14} /> 
@@ -139,14 +199,66 @@ function App() {
         </div>
       </header>
 
-      {/* Main Layout: Desktop (3 columns) vs Mobile (active tab) */}
+      {/* Main Layout: Desktop (3 columns with resizers) vs Mobile (active tab) */}
       <div className="flex flex-1 overflow-hidden relative">
         {/* Desktop Layout */}
-        <div className="hidden md:flex w-full h-full">
-          <Sidebar />
+        <div className="hidden md:flex w-full h-full relative overflow-hidden">
+          {/* Left Sidebar */}
+          {isSidebarOpen && <Sidebar />}
+
+          {/* Left Splitter */}
+          {isSidebarOpen && (
+            <PanelResizer
+              direction="left"
+              minWidth={180}
+              maxWidth={600}
+              defaultWidth={300}
+              onResize={setSidebarWidth}
+              onDoubleClick={() => setSidebarWidth(300)}
+            />
+          )}
+
+          {/* Floating tab to reopen sidebar if collapsed */}
+          {!isSidebarOpen && (
+            <button
+              onClick={() => setSidebarOpen(true)}
+              className="absolute left-0 top-1/2 -translate-y-1/2 z-20 py-3.5 px-1 rounded-r-lg bg-bgSidebar border-y border-r border-borderColor hover:bg-primary/20 text-textDim hover:text-white transition-all shadow-lg flex items-center justify-center group cursor-pointer"
+              title="Показать оглавление (Ctrl+B)"
+            >
+              <PanelLeftOpen size={15} className="group-hover:scale-110 text-primaryGlow transition-transform" />
+            </button>
+          )}
+
+          {/* Central Reader */}
           <Reader />
-          <AIInspector />
+
+          {/* Floating tab to reopen inspector if collapsed */}
+          {!isInspectorOpen && (
+            <button
+              onClick={() => setInspectorOpen(true)}
+              className="absolute right-0 top-1/2 -translate-y-1/2 z-20 py-3.5 px-1 rounded-l-lg bg-bgSidebar border-y border-l border-borderColor hover:bg-primary/20 text-textDim hover:text-white transition-all shadow-lg flex items-center justify-center group cursor-pointer"
+              title="Показать ИИ-инспектор (Ctrl+I)"
+            >
+              <PanelRightOpen size={15} className="group-hover:scale-110 text-primaryGlow transition-transform" />
+            </button>
+          )}
+
+          {/* Right Splitter */}
+          {isInspectorOpen && (
+            <PanelResizer
+              direction="right"
+              minWidth={280}
+              maxWidth={750}
+              defaultWidth={420}
+              onResize={setInspectorWidth}
+              onDoubleClick={() => setInspectorWidth(420)}
+            />
+          )}
+
+          {/* Right AI Inspector */}
+          {isInspectorOpen && <AIInspector />}
         </div>
+
 
         {/* Mobile View: Render only active tab */}
         <div className="flex md:hidden w-full h-full pb-14">

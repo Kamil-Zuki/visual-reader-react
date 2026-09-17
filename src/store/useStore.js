@@ -136,4 +136,56 @@ export const useStore = create((set) => ({
 
   isSettingsOpen: false,
   setSettingsOpen: (isOpen) => set({ isSettingsOpen: isOpen }),
+
+  // Desktop Panels Visibility & Widths
+  isSidebarOpen: localStorage.getItem('ddia_sidebar_open') !== 'false',
+  toggleSidebar: () => set((state) => {
+    const next = !state.isSidebarOpen;
+    localStorage.setItem('ddia_sidebar_open', String(next));
+    return { isSidebarOpen: next };
+  }),
+  setSidebarOpen: (isOpen) => {
+    localStorage.setItem('ddia_sidebar_open', String(isOpen));
+    set({ isSidebarOpen: isOpen });
+  },
+
+  isInspectorOpen: localStorage.getItem('ddia_inspector_open') !== 'false',
+  toggleInspector: () => set((state) => {
+    const next = !state.isInspectorOpen;
+    localStorage.setItem('ddia_inspector_open', String(next));
+    return { isInspectorOpen: next };
+  }),
+  setInspectorOpen: (isOpen) => {
+    localStorage.setItem('ddia_inspector_open', String(isOpen));
+    set({ isInspectorOpen: isOpen });
+  },
+
+  sidebarWidth: (() => {
+    try {
+      const saved = parseInt(localStorage.getItem('ddia_sidebar_width'), 10);
+      return !isNaN(saved) && saved >= 180 && saved <= 600 ? saved : 300;
+    } catch {
+      return 300;
+    }
+  })(),
+  setSidebarWidth: (width) => {
+    const clamped = Math.max(180, Math.min(600, width));
+    localStorage.setItem('ddia_sidebar_width', String(clamped));
+    set({ sidebarWidth: clamped });
+  },
+
+  inspectorWidth: (() => {
+    try {
+      const saved = parseInt(localStorage.getItem('ddia_inspector_width'), 10);
+      return !isNaN(saved) && saved >= 280 && saved <= 750 ? saved : 420;
+    } catch {
+      return 420;
+    }
+  })(),
+  setInspectorWidth: (width) => {
+    const clamped = Math.max(280, Math.min(750, width));
+    localStorage.setItem('ddia_inspector_width', String(clamped));
+    set({ inspectorWidth: clamped });
+  },
 }));
+
