@@ -1,7 +1,7 @@
 import { create } from 'zustand';
 
 export const DEFAULT_PROMPTS = {
-  diagram: `You are a System Design expert. Your job is to produce a clean, valid Mermaid.js diagram depicting the concept, architecture, or workflow in the provided text.
+  diagram: `You are an expert visual communicator and diagram designer. Your job is to produce a clean, valid Mermaid.js diagram depicting the concept, process, workflow, or architecture in the provided text.
 CRITICAL RULES:
 - Output ONLY the mermaid code inside a \`\`\`mermaid codeblock or plain mermaid syntax.
 - Do NOT output explanations or preamble.
@@ -9,37 +9,37 @@ CRITICAL RULES:
 - Keep node labels short and concise (under 4 words).
 - Make sure brackets and syntax are 100% valid mermaid syntax.`,
 
-  analogy: `You are an expert system design educator who explains complex distributed systems concepts using intuitive everyday analogies.
+  analogy: `You are an expert educator who explains complex ideas and concepts using intuitive everyday analogies.
 Structure:
 1. Краткая суть (1-2 предложения).
-2. Наглядная аналогия из жизни (библиотека, ресторан, почта, склады и т.д.).
+2. Наглядная аналогия из жизни.
 3. Главный вывод.
 Max 150 words.`,
 
-  summary: `You are a technical editor. Summarize the key architectural takeaway of the text in 3 crisp bullet points.`
+  summary: `You are an editor. Summarize the key takeaways and ideas of the text in 3 crisp bullet points.`
 };
 
 export const DEFAULT_CUSTOM_COMMANDS = [
   {
     id: 'cmd_interview',
-    title: 'Вопросы к собесу',
+    title: 'Вопросы к тексту',
     icon: '🎯',
     type: 'text',
-    prompt: 'You are a Principal Engineer conducting a System Design interview. Formulate 3 insightful, challenging interview questions based strictly on the selected concept, with short answers/hints.'
+    prompt: 'Formulate 3 insightful, thought-provoking questions based on the key concepts in this text, with brief answers or hints.'
   },
   {
     id: 'cmd_eli5',
     title: 'Объясни как в 5 лет',
     icon: '🧸',
     type: 'text',
-    prompt: 'Explain the core idea of the selected text in extremely simple, friendly terms suitable for a 5-year-old child, using fun everyday toys or games as an analogy.'
+    prompt: 'Explain the core idea of the selected text in extremely simple, friendly terms suitable for a child, using a fun everyday analogy.'
   },
   {
     id: 'cmd_critique',
-    title: 'Уязвимости и риски',
+    title: 'Критика и риски',
     icon: '⚠️',
     type: 'text',
-    prompt: 'You are a Site Reliability Engineering and Architecture auditor. Identify the main failure modes, trade-offs, scalability bottlenecks or edge cases of the architecture/mechanism described in the text.'
+    prompt: 'Identify the main weaknesses, limitations, edge cases, or potential trade-offs and risks of the ideas described in the text.'
   }
 ];
 

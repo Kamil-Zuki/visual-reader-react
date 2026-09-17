@@ -112,22 +112,23 @@ export default function AIInspector() {
 
     if (customCmd) {
       if (isDiagram) {
-        systemPrompt = `${DEFAULT_PROMPTS.diagram}\n\nTask: ${customCmd.prompt}\nLanguage instruction: Node labels and text inside the diagram must be in ${targetLang}.`;
+        const baseDiagramPrompt = prompts?.diagram || DEFAULT_PROMPTS.diagram;
+        systemPrompt = `${baseDiagramPrompt}\n\nTask: ${customCmd.prompt}\nLanguage note: Node labels and text inside the diagram should be in ${targetLang} unless specified otherwise in the task.`;
         userPrompt = `Generate a Mermaid diagram for this excerpt:\n\n"${selectedText}"`;
       } else {
-        systemPrompt = `${customCmd.prompt}\n\nLanguage instruction: You MUST write your entire response strictly in ${targetLang}.`;
-        userPrompt = `Analyze and respond based on your task instructions for this excerpt:\n\n"${selectedText}"`;
+        systemPrompt = `${customCmd.prompt}\n\nLanguage note: Respond in ${targetLang} unless specified otherwise in the instruction.`;
+        userPrompt = `Text excerpt:\n\n"${selectedText}"`;
       }
     } else {
       const basePrompt = prompts?.[type] || DEFAULT_PROMPTS[type];
       if (type === 'diagram') {
-        systemPrompt = `${basePrompt}\nLanguage instruction: Node labels and text inside the diagram must be in ${targetLang}.`;
+        systemPrompt = `${basePrompt}\nLanguage note: Node labels and text inside the diagram should be in ${targetLang} unless specified otherwise.`;
         userPrompt = `Generate a Mermaid diagram for this excerpt:\n\n"${selectedText}"`;
       } else if (type === 'analogy') {
-        systemPrompt = `${basePrompt}\nLanguage instruction: You MUST write your entire response strictly in ${targetLang}.`;
+        systemPrompt = `${basePrompt}\nLanguage note: Respond in ${targetLang} unless specified otherwise.`;
         userPrompt = `Explain this excerpt with a simple analogy:\n\n"${selectedText}"`;
       } else if (type === 'summary') {
-        systemPrompt = `${basePrompt}\nLanguage instruction: You MUST write your entire response strictly in ${targetLang}.`;
+        systemPrompt = `${basePrompt}\nLanguage note: Respond in ${targetLang} unless specified otherwise.`;
         userPrompt = `Summarize the key takeaways (3 points):\n\n"${selectedText}"`;
       }
     }
