@@ -1,5 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { useStore } from '../store/useStore';
+import React, { useState, useEffect } from 'react';
+import { useStore, DEFAULT_PROMPTS } from '../store/useStore';
 import { Lightbulb, Network, FileText, Maximize2, Trash2, Loader2, Sparkles } from 'lucide-react';
 import mermaid from 'mermaid';
 import DiagramModal from './DiagramModal';
@@ -18,8 +18,17 @@ mermaid.initialize({
   }
 });
 
+const LANGUAGE_NAMES = {
+  ru: 'Russian (на русском языке)',
+  en: 'English',
+  de: 'German (auf Deutsch)',
+  es: 'Spanish (en español)',
+  fr: 'French (en français)',
+  zh: 'Chinese (用中文)'
+};
+
 export default function AIInspector() {
-  const { apiKey, model, setSettingsOpen } = useStore();
+  const { apiKey, model, language, prompts, setSettingsOpen } = useStore();
   const [selectedText, setSelectedText] = useState('');
   const [cards, setCards] = useState(() => {
     try {
@@ -70,30 +79,22 @@ export default function AIInspector() {
 
     setCards(prev => [newCard, ...prev]);
 
+    // Use customized prompt and selected language
+    const basePrompt = prompts?.[type] || DEFAULT_PROMPTS[type];
+    const targetLang = LANGUAGE_NAMES[language] || 'Russian';
+
     let systemPrompt = '';
     let userPrompt = '';
 
     if (type === 'diagram') {
-      systemPrompt = `You are a System Design expert. Your job is to produce a clean, valid Mermaid.js diagram depicting the concept, architecture, or workflow in the provided text.
-CRITICAL RULES:
-- Output ONLY the mermaid code inside a \`\`\`mermaid codeblock or plain mermaid syntax.
-- Do NOT output explanations or preamble.
-- Use flowchart TD, sequenceDiagram, or graph LR.
-- Keep node labels short and concise (under 4 words).
-- Make sure brackets and syntax are 100% valid mermaid syntax.`;
+      systemPrompt = `${basePrompt}\nLanguage instruction: Node labels and text inside the diagram must be in ${targetLang}.`;
       userPrompt = `Generate a Mermaid diagram for this excerpt:\n\n"${selectedText}"`;
     } else if (type === 'analogy') {
-      systemPrompt = `You are an expert system design educator who explains complex distributed systems concepts using intuitive everyday analogies.
-Respond in Russian.
-Structure:
-1. Краткая суть (1-2 предложения).
-2. Наглядная аналогия из жизни (библиотека, ресторан, почта, склады и т.д.).
-3. Главный вывод.
-Max 150 words.`;
-      userPrompt = `Объясни этот фрагмент книги на простой аналогии:\n\n"${selectedText}"`;
+      systemPrompt = `${basePrompt}\nLanguage instruction: You MUST write your entire response strictly in ${targetLang}.`;
+      userPrompt = `Explain this excerpt with a simple analogy:\n\n"${selectedText}"`;
     } else if (type === 'summary') {
-      systemPrompt = `You are a technical editor. Summarize the key architectural takeaway of the text in 3 crisp bullet points. Respond in Russian.`;
-      userPrompt = `Сделай краткую выжимку тезисов (3 пункта):\n\n"${selectedText}"`;
+      systemPrompt = `${basePrompt}\nLanguage instruction: You MUST write your entire response strictly in ${targetLang}.`;
+      userPrompt = `Summarize the key takeaways (3 points):\n\n"${selectedText}"`;
     }
 
     try {

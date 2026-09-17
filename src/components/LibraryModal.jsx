@@ -2,7 +2,8 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { getAllBooksFromDB, saveBookToDB, deleteBookFromDB } from '../utils/db';
 import { parseHtmlBook } from '../utils/parser';
-import { X, Library, UploadCloud, Trash2, CheckCircle, BookOpen, Loader2 } from 'lucide-react';
+import { parsePdfBook } from '../utils/pdfParser';
+import { X, Library, UploadCloud, Trash2, CheckCircle, BookOpen, Loader2, FileType } from 'lucide-react';
 
 export default function LibraryModal() {
   const { isLibraryOpen, setLibraryOpen, currentBookId, setCurrentBook, setActiveChapter } = useStore();
@@ -10,6 +11,7 @@ export default function LibraryModal() {
   const [books, setBooks] = useState([]);
   const [loading, setLoading] = useState(false);
   const [parsing, setParsing] = useState(false);
+  const [pdfProgress, setPdfProgress] = useState(null); // { current, total, percentage }
   const [dragOver, setDragOver] = useState(false);
   const fileInputRef = useRef(null);
 
@@ -54,17 +56,32 @@ export default function LibraryModal() {
   const processFile = async (file) => {
     if (!file) return;
     setParsing(true);
+    setPdfProgress(null);
+
     try {
-      const text = await file.text();
-      const parsedBook = parseHtmlBook(text, file.name);
+      let parsedBook = null;
+      const fileName = file.name.toLowerCase();
+
+      if (fileName.endsWith('.pdf')) {
+        // PDF parsing
+        parsedBook = await parsePdfBook(file, (progress) => {
+          setPdfProgress(progress);
+        });
+      } else {
+        // HTML / MD / TXT parsing
+        const text = await file.text();
+        parsedBook = parseHtmlBook(text, file.name);
+      }
+
       await saveBookToDB(parsedBook);
       await loadLibraryBooks();
       handleSelectBook(parsedBook);
     } catch (err) {
       console.error('Error parsing book file:', err);
-      alert('Ошибка при чтении или парсинге файла: ' + err.message);
+      alert('Ошибка при чтении или парсинге книги: ' + err.message);
     } finally {
       setParsing(false);
+      setPdfProgress(null);
     }
   };
 
@@ -85,7 +102,7 @@ export default function LibraryModal() {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
-      <div className="bg-bgSidebar border border-borderColor rounded-xl w-full max-w-xl shadow-2xl p-6 relative flex flex-col gap-5 max-h-[90vh]">
+      <div className="bg-bgSidebar border border-borderColor rounded-2xl w-full max-w-xl shadow-2xl p-6 relative flex flex-col gap-5 max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-borderColor pb-3">
           <div className="flex items-center gap-2 text-lg font-semibold text-white">
@@ -102,8 +119,8 @@ export default function LibraryModal() {
 
         {/* Upload Dropzone */}
         <div 
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setDragOver(true); }}
+          onClick={() => !parsing && fileInputRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); if (!parsing) setDragOver(true); }}
           onDragLeave={() => setDragOver(false)}
           onDrop={handleDrop}
           className={`border-2 border-dashed rounded-xl p-6 text-center cursor-pointer transition-all flex flex-col items-center justify-center gap-2 ${
@@ -114,13 +131,31 @@ export default function LibraryModal() {
             type="file" 
             ref={fileInputRef} 
             onChange={handleFileChange} 
-            accept=".html,.htm,.txt,.md" 
+            accept=".html,.htm,.txt,.md,.pdf" 
             className="hidden" 
           />
           {parsing ? (
-            <div className="flex flex-col items-center gap-2 text-primaryGlow py-2">
+            <div className="flex flex-col items-center gap-3 text-primaryGlow py-2 w-full max-w-xs">
               <Loader2 className="animate-spin" size={32} />
-              <span className="text-sm font-medium">Импортируем и строим оглавление книги...</span>
+              <div className="text-center">
+                <span className="text-sm font-semibold text-white block">
+                  {pdfProgress ? `Парсинг PDF: страница ${pdfProgress.current} из ${pdfProgress.total}` : 'Чтение книги и построение глав...'}
+                </span>
+                {pdfProgress && (
+                  <span className="text-xs text-textMuted">
+                    Извлекаем оглавление и текст ({pdfProgress.percentage}%)
+                  </span>
+                )}
+              </div>
+              
+              {pdfProgress && (
+                <div className="w-full bg-black/50 rounded-full h-2 overflow-hidden border border-white/10">
+                  <div 
+                    className="bg-gradient-to-r from-primary to-accentCyan h-full transition-all duration-150"
+                    style={{ width: `${pdfProgress.percentage}%` }}
+                  />
+                </div>
+              )}
             </div>
           ) : (
             <>
@@ -130,8 +165,10 @@ export default function LibraryModal() {
               <div className="text-sm font-semibold text-white">
                 Нажмите или перетащите сюда файл книги
               </div>
-              <div className="text-xs text-textDim max-w-sm">
-                Поддерживаются HTML, Markdown, TXT. Автоматически извлекаются главы, разделы и сохраняются в память браузера (IndexedDB).
+              <div className="text-xs text-textDim max-w-md leading-relaxed">
+                Поддерживаются <span className="text-white font-medium">PDF</span>, <span className="text-white font-medium">HTML</span>, <span className="text-white font-medium">Markdown</span>, TXT.
+                <br />
+                Для PDF автоматически считываются встроенные закладки оглавления!
               </div>
             </>
           )}
@@ -150,6 +187,7 @@ export default function LibraryModal() {
               books.map((b) => {
                 const isSelected = b.id === currentBookId;
                 const totalChapters = (b.chapters || b.structure || []).length;
+                const isPdf = b.format === 'pdf';
                 return (
                   <div
                     key={b.id}
@@ -163,9 +201,17 @@ export default function LibraryModal() {
                     <div className="flex items-center gap-3 min-w-0 pr-2">
                       <BookOpen size={18} className={isSelected ? 'text-primaryGlow' : 'text-textMuted'} />
                       <div className="flex flex-col min-w-0">
-                        <span className="text-sm font-medium truncate">{b.title}</span>
+                        <div className="flex items-center gap-2">
+                          <span className="text-sm font-medium truncate">{b.title}</span>
+                          {isPdf && (
+                            <span className="text-[10px] font-semibold bg-red-500/20 text-red-400 px-1.5 py-0.5 rounded uppercase tracking-wider">
+                              PDF
+                            </span>
+                          )}
+                        </div>
                         <span className="text-xs text-textDim">
                           {b.author ? `${b.author} • ` : ''}{totalChapters} глав
+                          {b.totalPages ? ` • ${b.totalPages} стр.` : ''}
                         </span>
                       </div>
                     </div>
@@ -173,7 +219,7 @@ export default function LibraryModal() {
                     <div className="flex items-center gap-2 shrink-0">
                       {isSelected ? (
                         <span className="flex items-center gap-1 text-xs text-primaryGlow font-medium bg-primary/20 px-2 py-1 rounded">
-                          <CheckCircle size={13} /> Активна
+                          <CheckCircle size={13} /> Читается
                         </span>
                       ) : (
                         <button
@@ -196,7 +242,7 @@ export default function LibraryModal() {
         <div className="flex justify-end pt-3 border-t border-borderColor">
           <button 
             onClick={() => setLibraryOpen(false)}
-            className="px-5 py-2 rounded-lg text-sm font-medium text-textMuted hover:text-white hover:bg-white/5 transition-colors"
+            className="px-5 py-2 rounded-lg text-xs font-medium text-textMuted hover:text-white hover:bg-white/5 transition-colors"
           >
             Закрыть
           </button>
