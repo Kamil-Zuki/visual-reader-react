@@ -3,11 +3,22 @@
 @tailwind utilities;
 
 @layer base {
-  body {
-    @apply bg-bgMain text-textMain font-sans overflow-hidden;
+  html, body {
+    @apply bg-bgMain text-textMain font-sans;
     margin: 0;
     padding: 0;
+    height: 100%;
+    overflow: hidden;
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
   }
+}
+
+.safe-bottom {
+  padding-bottom: max(0.5rem, env(safe-area-inset-bottom));
+}
+.safe-top {
+  padding-top: max(0.5rem, env(safe-area-inset-top));
 }
 
 /* Custom Scrollbar */

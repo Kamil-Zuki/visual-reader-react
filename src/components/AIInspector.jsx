@@ -45,17 +45,32 @@ export default function AIInspector() {
     localStorage.setItem('ddia_saved_cards', JSON.stringify(cards));
   }, [cards]);
 
-  // Selection listener
+  // Selection listener (desktop mouseup + mobile touchend / selectionchange)
   useEffect(() => {
-    const handleMouseUp = () => {
+    let timer = null;
+    const updateSelection = () => {
       const selection = window.getSelection();
       const text = selection?.toString().trim();
       if (text && text.length > 5) {
         setSelectedText(text);
       }
     };
-    document.addEventListener('mouseup', handleMouseUp);
-    return () => document.removeEventListener('mouseup', handleMouseUp);
+
+    const handleSelectionChange = () => {
+      clearTimeout(timer);
+      timer = setTimeout(updateSelection, 200);
+    };
+
+    document.addEventListener('mouseup', updateSelection);
+    document.addEventListener('touchend', updateSelection);
+    document.addEventListener('selectionchange', handleSelectionChange);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('mouseup', updateSelection);
+      document.removeEventListener('touchend', updateSelection);
+      document.removeEventListener('selectionchange', handleSelectionChange);
+    };
   }, []);
 
   const triggerAI = async (type) => {
@@ -155,25 +170,62 @@ export default function AIInspector() {
     setCards(prev => prev.filter(c => c.id !== id));
   };
 
+  const [customText, setCustomText] = useState('');
+  const [showInput, setShowInput] = useState(false);
+
   return (
-    <aside className="w-[450px] bg-bgSidebar border-l border-borderColor flex flex-col shrink-0">
+    <aside className="w-full md:w-[450px] bg-bgSidebar md:border-l border-borderColor flex flex-col shrink-0 h-full pb-16 md:pb-0">
       {/* Header */}
       <div className="h-14 border-b border-borderColor flex items-center justify-between px-4 shrink-0 font-semibold text-sm">
         <div className="flex items-center gap-2 text-white">
           <Network size={16} className="text-primaryGlow" />
           Визуальный инспектор
         </div>
-        {cards.length > 0 && (
-          <button 
-            onClick={() => setCards([])}
-            className="text-xs text-textDim hover:text-red-400 transition-colors"
+        <div className="flex items-center gap-2">
+          <button
+            onClick={() => setShowInput(!showInput)}
+            className="text-xs text-primaryGlow hover:text-white transition-colors bg-primary/10 hover:bg-primary/20 px-2 py-1 rounded"
           >
-            Очистить все
+            {showInput ? 'Скрыть ввод' : '+ Свой текст'}
           </button>
-        )}
+          {cards.length > 0 && (
+            <button 
+              onClick={() => setCards([])}
+              className="text-xs text-textDim hover:text-red-400 transition-colors"
+            >
+              Очистить все
+            </button>
+          )}
+        </div>
       </div>
 
-      <div className="flex-1 p-4 overflow-y-auto relative custom-scrollbar flex flex-col gap-4">
+      <div className="flex-1 p-3 sm:p-4 overflow-y-auto relative custom-scrollbar flex flex-col gap-4">
+        {/* Custom text input box */}
+        {showInput && (
+          <div className="p-3 rounded-xl bg-bgCard border border-primary/30 flex flex-col gap-2">
+            <div className="text-xs font-semibold text-textMain">Введите текст или концепт:</div>
+            <textarea
+              value={customText}
+              onChange={(e) => setCustomText(e.target.value)}
+              placeholder="Вставьте термин, алгоритм или фрагмент текста..."
+              rows={3}
+              className="w-full bg-black/40 border border-borderColor rounded-lg p-2.5 text-xs text-textMain outline-none focus:border-primary resize-none"
+            />
+            <div className="flex justify-end gap-2">
+              <button
+                disabled={!customText.trim()}
+                onClick={() => {
+                  setSelectedText(customText.trim());
+                  setShowInput(false);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primaryGlow disabled:opacity-40 text-white text-xs font-semibold transition-all"
+              >
+                Применить для анализа
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Selected text prompt action panel */}
         {selectedText && (
           <div className="p-4 rounded-xl bg-bgCard border border-primary/30 shadow-lg shadow-primary/5 flex flex-col gap-3">
@@ -183,33 +235,33 @@ export default function AIInspector() {
               </span>
               <button 
                 onClick={() => setSelectedText('')}
-                className="text-xs text-textDim hover:text-textMuted"
+                className="text-xs text-textDim hover:text-textMuted p-1"
               >
                 ✕
               </button>
             </div>
 
-            <div className="text-xs italic text-textMuted border-l-2 border-primary/50 pl-3 py-1 max-h-24 overflow-y-auto custom-scrollbar">
+            <div className="text-xs italic text-textMuted border-l-2 border-primary/50 pl-3 py-1 max-h-28 overflow-y-auto custom-scrollbar">
               "{selectedText}"
             </div>
 
             <div className="grid grid-cols-1 gap-2 pt-1">
               <button 
                 onClick={() => triggerAI('diagram')}
-                className="w-full py-2 px-3 rounded-lg bg-primary hover:bg-primaryGlow text-white text-xs font-semibold transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2"
+                className="w-full py-2.5 px-3 rounded-lg bg-primary hover:bg-primaryGlow text-white text-xs font-semibold transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Network size={14} /> 📊 Визуализировать архитектуру
               </button>
               <div className="grid grid-cols-2 gap-2">
                 <button 
                   onClick={() => triggerAI('analogy')}
-                  className="py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-textMain border border-borderColor text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                  className="py-2 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-textMain border border-borderColor text-xs font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <Lightbulb size={13} className="text-yellow-400" /> Аналогия
                 </button>
                 <button 
                   onClick={() => triggerAI('summary')}
-                  className="py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-textMain border border-borderColor text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                  className="py-2 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-textMain border border-borderColor text-xs font-medium transition-colors flex items-center justify-center gap-1.5 cursor-pointer"
                 >
                   <FileText size={13} className="text-accentCyan" /> Резюме
                 </button>
@@ -219,15 +271,21 @@ export default function AIInspector() {
         )}
 
         {/* Empty State */}
-        {!selectedText && cards.length === 0 && (
-          <div className="flex-1 flex flex-col items-center justify-center text-center p-6 my-auto opacity-50">
+        {!selectedText && cards.length === 0 && !showInput && (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-6 my-auto opacity-70">
             <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-3">
               <Lightbulb size={24} />
             </div>
             <h3 className="font-semibold text-base text-white mb-1">Визуализация и Пояснения</h3>
-            <p className="text-xs text-textMuted max-w-xs leading-relaxed">
-              Выделите любой фрагмент текста книги курсором мыши, чтобы сгенерировать архитектурную схему или жизненную аналогию.
+            <p className="text-xs text-textMuted max-w-xs leading-relaxed mb-4">
+              Выделите фрагмент текста в книге или нажмите кнопку "+ Свой текст" выше, чтобы сгенерировать архитектурную схему или аналогию.
             </p>
+            <button
+              onClick={() => setShowInput(true)}
+              className="px-3.5 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-primaryGlow text-xs font-medium hover:bg-primary/30 transition-all"
+            >
+              Ввести фрагмент вручную
+            </button>
           </div>
         )}
 

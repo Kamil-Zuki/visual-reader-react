@@ -64,9 +64,12 @@ export const useStore = create((set) => ({
     set({ currentBook: book, currentBookId: id || 'default_ddia' });
   },
 
+  mobileTab: 'reader', // 'sidebar' | 'reader' | 'ai'
+  setMobileTab: (tab) => set({ mobileTab: tab }),
+
   activeChapterIdx: 0,
   activeSectionIdx: 0,
-  setActiveChapter: (cIdx, sIdx = 0) => set({ activeChapterIdx: cIdx, activeSectionIdx: sIdx }),
+  setActiveChapter: (cIdx, sIdx = 0) => set({ activeChapterIdx: cIdx, activeSectionIdx: sIdx, mobileTab: 'reader' }),
   
   isAiLoading: false,
   setAiLoading: (loading) => set({ isAiLoading: loading }),
