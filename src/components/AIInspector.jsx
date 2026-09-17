@@ -1,68 +1,302 @@
-import React, { useEffect, useState } from 'react';
-import { Lightbulb, Network, Maximize2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
+import { Lightbulb, Network, FileText, Maximize2, Trash2, Loader2, Sparkles } from 'lucide-react';
+import mermaid from 'mermaid';
+import DiagramModal from './DiagramModal';
+
+mermaid.initialize({
+  startOnLoad: false,
+  theme: 'dark',
+  securityLevel: 'loose',
+  themeVariables: {
+    primaryColor: '#6366f1',
+    primaryTextColor: '#fff',
+    primaryBorderColor: '#818cf8',
+    lineColor: '#06b6d4',
+    secondaryColor: '#1e1e2d',
+    tertiaryColor: '#121620'
+  }
+});
 
 export default function AIInspector() {
-  const { apiKey, isAiLoading, aiResult } = useStore();
+  const { apiKey, model, setSettingsOpen } = useStore();
   const [selectedText, setSelectedText] = useState('');
+  const [cards, setCards] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('ddia_saved_cards') || '[]');
+    } catch {
+      return [];
+    }
+  });
 
+  const [fullscreenDiagram, setFullscreenDiagram] = useState({ isOpen: false, svg: '', title: '' });
+
+  // Sync cards with localStorage
+  useEffect(() => {
+    localStorage.setItem('ddia_saved_cards', JSON.stringify(cards));
+  }, [cards]);
+
+  // Selection listener
   useEffect(() => {
     const handleMouseUp = () => {
       const selection = window.getSelection();
-      const text = selection.toString().trim();
-      if (text.length > 10) {
+      const text = selection?.toString().trim();
+      if (text && text.length > 5) {
         setSelectedText(text);
-      } else {
-        setSelectedText('');
       }
     };
     document.addEventListener('mouseup', handleMouseUp);
     return () => document.removeEventListener('mouseup', handleMouseUp);
   }, []);
 
+  const triggerAI = async (type) => {
+    if (!selectedText) return;
+
+    if (!apiKey) {
+      setSettingsOpen(true);
+      alert('Пожалуйста, укажите ваш API-ключ OpenRouter в настройках.');
+      return;
+    }
+
+    const cardId = 'card_' + Date.now();
+    const newCard = {
+      id: cardId,
+      type,
+      quote: selectedText,
+      loading: true,
+      content: '',
+      svg: null
+    };
+
+    setCards(prev => [newCard, ...prev]);
+
+    let systemPrompt = '';
+    let userPrompt = '';
+
+    if (type === 'diagram') {
+      systemPrompt = `You are a System Design expert. Your job is to produce a clean, valid Mermaid.js diagram depicting the concept, architecture, or workflow in the provided text.
+CRITICAL RULES:
+- Output ONLY the mermaid code inside a \`\`\`mermaid codeblock or plain mermaid syntax.
+- Do NOT output explanations or preamble.
+- Use flowchart TD, sequenceDiagram, or graph LR.
+- Keep node labels short and concise (under 4 words).
+- Make sure brackets and syntax are 100% valid mermaid syntax.`;
+      userPrompt = `Generate a Mermaid diagram for this excerpt:\n\n"${selectedText}"`;
+    } else if (type === 'analogy') {
+      systemPrompt = `You are an expert system design educator who explains complex distributed systems concepts using intuitive everyday analogies.
+Respond in Russian.
+Structure:
+1. Краткая суть (1-2 предложения).
+2. Наглядная аналогия из жизни (библиотека, ресторан, почта, склады и т.д.).
+3. Главный вывод.
+Max 150 words.`;
+      userPrompt = `Объясни этот фрагмент книги на простой аналогии:\n\n"${selectedText}"`;
+    } else if (type === 'summary') {
+      systemPrompt = `You are a technical editor. Summarize the key architectural takeaway of the text in 3 crisp bullet points. Respond in Russian.`;
+      userPrompt = `Сделай краткую выжимку тезисов (3 пункта):\n\n"${selectedText}"`;
+    }
+
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': window.location.href,
+          'X-Title': 'Visual Reader React'
+        },
+        body: JSON.stringify({
+          model: model || 'openrouter/free',
+          messages: [
+            { role: 'system', content: systemPrompt },
+            { role: 'user', content: userPrompt }
+          ],
+          temperature: 0.2
+        })
+      });
+
+      if (!res.ok) {
+        const errText = await res.text();
+        throw new Error(`OpenRouter (${res.status}): ${errText}`);
+      }
+
+      const data = await res.json();
+      const rawOutput = data.choices?.[0]?.message?.content || 'Нет ответа от модели';
+
+      let renderedSvg = null;
+      if (type === 'diagram') {
+        const cleanCode = rawOutput.replace(/```mermaid/gi, '').replace(/```/g, '').trim();
+        try {
+          const { svg } = await mermaid.render('mermaid_' + cardId, cleanCode);
+          renderedSvg = svg;
+        } catch (mErr) {
+          console.error('Mermaid render error:', mErr);
+        }
+      }
+
+      setCards(prev => prev.map(c => {
+        if (c.id === cardId) {
+          return { ...c, loading: false, content: rawOutput, svg: renderedSvg };
+        }
+        return c;
+      }));
+    } catch (err) {
+      setCards(prev => prev.map(c => {
+        if (c.id === cardId) {
+          return { ...c, loading: false, content: `Ошибка: ${err.message}` };
+        }
+        return c;
+      }));
+    }
+  };
+
+  const removeCard = (id) => {
+    setCards(prev => prev.filter(c => c.id !== id));
+  };
+
   return (
     <aside className="w-[450px] bg-bgSidebar border-l border-borderColor flex flex-col shrink-0">
-      <div className="h-12 border-b border-borderColor flex items-center px-4 font-semibold text-sm gap-2">
-        <Network size={16} className="text-primary" />
-        Визуальный инспектор
+      {/* Header */}
+      <div className="h-14 border-b border-borderColor flex items-center justify-between px-4 shrink-0 font-semibold text-sm">
+        <div className="flex items-center gap-2 text-white">
+          <Network size={16} className="text-primaryGlow" />
+          Визуальный инспектор
+        </div>
+        {cards.length > 0 && (
+          <button 
+            onClick={() => setCards([])}
+            className="text-xs text-textDim hover:text-red-400 transition-colors"
+          >
+            Очистить все
+          </button>
+        )}
       </div>
 
-      <div className="flex-1 p-6 overflow-y-auto relative custom-scrollbar flex flex-col">
-        {!selectedText && !aiResult && !isAiLoading && (
-          <div className="flex-1 flex flex-col items-center justify-center text-center opacity-40 mt-10">
-            <Lightbulb size={48} className="mb-4 text-primary" />
-            <h3 className="font-semibold text-lg mb-2">Визуализация и Пояснения</h3>
-            <p className="text-sm max-w-[250px]">
-              Выделите фрагмент текста в книге и выберите действие: диаграмма, аналогия или резюме.
+      <div className="flex-1 p-4 overflow-y-auto relative custom-scrollbar flex flex-col gap-4">
+        {/* Selected text prompt action panel */}
+        {selectedText && (
+          <div className="p-4 rounded-xl bg-bgCard border border-primary/30 shadow-lg shadow-primary/5 flex flex-col gap-3">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-semibold text-primaryGlow uppercase tracking-wider flex items-center gap-1.5">
+                <Sparkles size={13} /> Выделенный фрагмент:
+              </span>
+              <button 
+                onClick={() => setSelectedText('')}
+                className="text-xs text-textDim hover:text-textMuted"
+              >
+                ✕
+              </button>
+            </div>
+
+            <div className="text-xs italic text-textMuted border-l-2 border-primary/50 pl-3 py-1 max-h-24 overflow-y-auto custom-scrollbar">
+              "{selectedText}"
+            </div>
+
+            <div className="grid grid-cols-1 gap-2 pt-1">
+              <button 
+                onClick={() => triggerAI('diagram')}
+                className="w-full py-2 px-3 rounded-lg bg-primary hover:bg-primaryGlow text-white text-xs font-semibold transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2"
+              >
+                <Network size={14} /> 📊 Визуализировать архитектуру
+              </button>
+              <div className="grid grid-cols-2 gap-2">
+                <button 
+                  onClick={() => triggerAI('analogy')}
+                  className="py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-textMain border border-borderColor text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <Lightbulb size={13} className="text-yellow-400" /> Аналогия
+                </button>
+                <button 
+                  onClick={() => triggerAI('summary')}
+                  className="py-1.5 px-3 rounded-lg bg-white/5 hover:bg-white/10 text-textMain border border-borderColor text-xs font-medium transition-colors flex items-center justify-center gap-1.5"
+                >
+                  <FileText size={13} className="text-accentCyan" /> Резюме
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Empty State */}
+        {!selectedText && cards.length === 0 && (
+          <div className="flex-1 flex flex-col items-center justify-center text-center p-6 my-auto opacity-50">
+            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-3">
+              <Lightbulb size={24} />
+            </div>
+            <h3 className="font-semibold text-base text-white mb-1">Визуализация и Пояснения</h3>
+            <p className="text-xs text-textMuted max-w-xs leading-relaxed">
+              Выделите любой фрагмент текста книги курсором мыши, чтобы сгенерировать архитектурную схему или жизненную аналогию.
             </p>
           </div>
         )}
 
-        {selectedText && (
-          <div className="mb-6 p-4 rounded-lg bg-bgCard border border-primary/20 shadow-lg shadow-primary/5">
-            <h4 className="text-xs font-semibold text-primary mb-2 uppercase tracking-wider">Выделенный текст:</h4>
-            <div className="text-sm italic text-textMuted border-l-2 border-primary/40 pl-3 py-1 my-2 max-h-32 overflow-y-auto custom-scrollbar">
-              {selectedText}
+        {/* Generated Cards */}
+        {cards.map((card) => (
+          <div 
+            key={card.id} 
+            className="p-4 rounded-xl bg-bgCard border border-borderColor flex flex-col gap-3 shadow-md"
+          >
+            <div className="flex items-center justify-between border-b border-white/5 pb-2">
+              <span className="text-xs font-semibold text-primaryGlow uppercase tracking-wider flex items-center gap-1.5">
+                {card.type === 'diagram' && '📊 Диаграмма'}
+                {card.type === 'analogy' && '💡 Аналогия'}
+                {card.type === 'summary' && '📝 Резюме'}
+              </span>
+              <div className="flex items-center gap-1">
+                {card.svg && (
+                  <button 
+                    onClick={() => setFullscreenDiagram({ isOpen: true, svg: card.svg, title: card.quote })}
+                    title="На весь экран"
+                    className="p-1 rounded hover:bg-white/10 text-textDim hover:text-white transition-colors"
+                  >
+                    <Maximize2 size={13} />
+                  </button>
+                )}
+                <button 
+                  onClick={() => removeCard(card.id)}
+                  title="Удалить карточку"
+                  className="p-1 rounded hover:bg-red-500/20 text-textDim hover:text-red-400 transition-colors"
+                >
+                  <Trash2 size={13} />
+                </button>
+              </div>
             </div>
-            
-            <div className="flex flex-col gap-2 mt-4">
-              <button className="w-full py-2 px-4 rounded-md bg-primary hover:bg-primaryGlow text-white text-sm font-medium transition-colors shadow-lg shadow-primary/20 flex items-center justify-center gap-2">
-                <Network size={16} /> Построить Архитектуру (Диаграмма)
-              </button>
-              <button className="w-full py-2 px-4 rounded-md bg-white/5 hover:bg-white/10 text-textMain border border-borderColor text-sm font-medium transition-colors flex items-center justify-center gap-2">
-                <Lightbulb size={16} className="text-yellow-500" /> Объяснить простой аналогией
-              </button>
-            </div>
-          </div>
-        )}
 
-        {isAiLoading && (
-          <div className="flex flex-col items-center justify-center py-12">
-            <div className="spinner mb-4"></div>
-            <div className="text-sm text-textMuted animate-pulse">ИИ анализирует текст...</div>
+            <div className="text-xs text-textDim italic line-clamp-2">
+              "{card.quote}"
+            </div>
+
+            {card.loading ? (
+              <div className="flex items-center justify-center py-6 gap-2 text-xs text-textMuted">
+                <Loader2 className="animate-spin text-primaryGlow" size={16} />
+                <span>ИИ строит ответ...</span>
+              </div>
+            ) : (
+              <div>
+                {card.type === 'diagram' && card.svg ? (
+                  <div 
+                    onClick={() => setFullscreenDiagram({ isOpen: true, svg: card.svg, title: card.quote })}
+                    className="overflow-hidden bg-[#0a0d14] p-3 rounded-lg cursor-pointer border border-white/5 hover:border-primary/40 transition-colors flex items-center justify-center"
+                    dangerouslySetInnerHTML={{ __html: card.svg }}
+                  />
+                ) : (
+                  <div className="text-xs text-textMain leading-relaxed whitespace-pre-wrap">
+                    {card.content}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
-        )}
+        ))}
       </div>
+
+      {/* Fullscreen Diagram Modal */}
+      <DiagramModal 
+        isOpen={fullscreenDiagram.isOpen}
+        onClose={() => setFullscreenDiagram({ isOpen: false, svg: '', title: '' })}
+        svgContent={fullscreenDiagram.svg}
+        title={fullscreenDiagram.title}
+      />
     </aside>
   );
 }

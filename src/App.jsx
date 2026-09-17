@@ -7,8 +7,8 @@ import { BookOpen, Settings, Library } from 'lucide-react';
 import Sidebar from './components/Sidebar';
 import Reader from './components/Reader';
 import AIInspector from './components/AIInspector';
-// import LibraryModal from './components/LibraryModal';
-// import SettingsModal from './components/SettingsModal';
+import LibraryModal from './components/LibraryModal';
+import SettingsModal from './components/SettingsModal';
 
 function App() {
   const { 
@@ -66,10 +66,13 @@ function App() {
           <button onClick={() => setLibraryOpen(true)} className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors">
             <Library size={14} /> Библиотека
           </button>
-          <div className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border transition-colors ${apiKey ? 'border-accentEmerald/30 bg-accentEmerald/10 text-accentEmerald' : 'border-red-500/30 bg-red-500/10 text-red-400'}`}>
+          <button 
+            onClick={() => setSettingsOpen(true)}
+            className={`flex items-center gap-2 px-3 py-1.5 text-sm rounded-md border transition-colors cursor-pointer ${apiKey ? 'border-accentEmerald/30 bg-accentEmerald/10 text-accentEmerald hover:bg-accentEmerald/20' : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}
+          >
             <div className={`w-2 h-2 rounded-full ${apiKey ? 'bg-accentEmerald' : 'bg-red-500'}`}></div>
             {apiKey ? 'API Key Active' : 'No API Key'}
-          </div>
+          </button>
           <button onClick={() => setSettingsOpen(true)} className="flex items-center gap-2 px-3 py-1.5 text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors">
             <Settings size={14} /> Настройки
           </button>
@@ -84,8 +87,8 @@ function App() {
       </div>
 
       {/* Modals */}
-      {/* <LibraryModal /> */}
-      {/* <SettingsModal /> */}
+      <LibraryModal />
+      <SettingsModal />
     </div>
   );
 }
