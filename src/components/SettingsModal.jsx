@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, DEFAULT_PROMPTS } from '../store/useStore';
-import { X, Key, Cpu, Sparkles, Globe, MessageSquareCode, RotateCcw, Check } from 'lucide-react';
+import { X, Key, Cpu, Sparkles, Globe, MessageSquareCode, RotateCcw, Check, Plus, Edit2, Trash2 } from 'lucide-react';
+import CommandModal from './CommandModal';
 
 export default function SettingsModal() {
   const { 
@@ -8,15 +9,20 @@ export default function SettingsModal() {
     apiKey, setApiKey, 
     model, setModel,
     language, setLanguage,
-    prompts, setPrompts, resetPrompts
+    prompts, setPrompts, resetPrompts,
+    customCommands, addCustomCommand, updateCustomCommand, deleteCustomCommand, resetCustomCommands
   } = useStore();
   
   const [activeTab, setActiveTab] = useState('general'); // 'general' | 'prompts'
+  const [promptCategory, setPromptCategory] = useState('custom'); // 'custom' | 'builtin'
   const [localApiKey, setLocalApiKey] = useState(apiKey);
   const [localModel, setLocalModel] = useState(model);
   const [localLanguage, setLocalLanguage] = useState(language);
   const [localPrompts, setLocalPrompts] = useState(prompts);
   const [activePromptTab, setActivePromptTab] = useState('diagram'); // 'diagram' | 'analogy' | 'summary'
+
+  const [commandModalOpen, setCommandModalOpen] = useState(false);
+  const [editingCommand, setEditingCommand] = useState(null);
 
   const [modelsList, setModelsList] = useState({ free: [], paid: [] });
   const [loadingModels, setLoadingModels] = useState(false);
@@ -62,16 +68,22 @@ export default function SettingsModal() {
   };
 
   const handleResetPrompts = () => {
-    if (window.confirm('Сбросить все промпты к начальным настройкам?')) {
+    if (window.confirm('Сбросить стандартные промпты к начальным настройкам?')) {
       resetPrompts();
       setLocalPrompts({ ...DEFAULT_PROMPTS });
+    }
+  };
+
+  const handleResetCommands = () => {
+    if (window.confirm('Сбросить пользовательские команды к начальному списку?')) {
+      resetCustomCommands();
     }
   };
 
   if (!isSettingsOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in">
       <div className="bg-bgSidebar border border-borderColor rounded-2xl w-full max-w-xl shadow-2xl p-6 relative flex flex-col gap-5 max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-borderColor pb-3">
@@ -103,7 +115,7 @@ export default function SettingsModal() {
               activeTab === 'prompts' ? 'bg-primary text-white shadow-md' : 'text-textMuted hover:text-white'
             }`}
           >
-            <MessageSquareCode size={14} /> Промпты ИИ
+            <MessageSquareCode size={14} /> Мои команды и промпты
           </button>
         </div>
 
@@ -192,68 +204,181 @@ export default function SettingsModal() {
                 <option value="zh" className="bg-[#1a1f2e] text-white">中文 (Китайский)</option>
               </select>
               <span className="text-[11px] text-textDim">
-                На этом языке ИИ будет составлять объяснения, аналогии и краткие тезисы.
+                На этом языке ИИ будет составлять объяснения, схемы и ответы на ваши команды.
               </span>
             </div>
           </div>
         )}
 
-        {/* Tab 2: Custom Prompts */}
+        {/* Tab 2: Commands & Prompts */}
         {activeTab === 'prompts' && (
           <div className="flex flex-col gap-3 overflow-y-auto custom-scrollbar pr-1 flex-1">
-            <div className="flex justify-between items-center">
-              <div className="flex gap-1 bg-black/40 p-1 rounded-lg border border-borderColor">
-                <button
-                  onClick={() => setActivePromptTab('diagram')}
-                  className={`px-3 py-1 text-xs rounded font-medium transition-all ${
-                    activePromptTab === 'diagram' ? 'bg-primary/30 text-primaryGlow border border-primary/40' : 'text-textMuted hover:text-white'
-                  }`}
-                >
-                  📊 Диаграммы
-                </button>
-                <button
-                  onClick={() => setActivePromptTab('analogy')}
-                  className={`px-3 py-1 text-xs rounded font-medium transition-all ${
-                    activePromptTab === 'analogy' ? 'bg-primary/30 text-primaryGlow border border-primary/40' : 'text-textMuted hover:text-white'
-                  }`}
-                >
-                  💡 Аналогии
-                </button>
-                <button
-                  onClick={() => setActivePromptTab('summary')}
-                  className={`px-3 py-1 text-xs rounded font-medium transition-all ${
-                    activePromptTab === 'summary' ? 'bg-primary/30 text-primaryGlow border border-primary/40' : 'text-textMuted hover:text-white'
-                  }`}
-                >
-                  📝 Резюме
-                </button>
-              </div>
-
+            {/* Sub-tabs: My Commands vs Built-in Prompts */}
+            <div className="flex gap-2 border-b border-borderColor pb-2">
               <button
-                onClick={handleResetPrompts}
-                title="Сбросить все промпты к оригинальным"
-                className="flex items-center gap-1.5 text-xs text-textDim hover:text-white px-2 py-1 rounded hover:bg-white/5 transition-colors"
+                onClick={() => setPromptCategory('custom')}
+                className={`text-xs font-semibold pb-1 border-b-2 transition-all ${
+                  promptCategory === 'custom' 
+                    ? 'border-primary text-primaryGlow' 
+                    : 'border-transparent text-textMuted hover:text-white'
+                }`}
               >
-                <RotateCcw size={12} /> Сбросить всё
+                ✨ Мои команды ({customCommands.length})
+              </button>
+              <button
+                onClick={() => setPromptCategory('builtin')}
+                className={`text-xs font-semibold pb-1 border-b-2 transition-all ${
+                  promptCategory === 'builtin' 
+                    ? 'border-primary text-primaryGlow' 
+                    : 'border-transparent text-textMuted hover:text-white'
+                }`}
+              >
+                ⚙️ Базовые системные промпты
               </button>
             </div>
 
-            <div className="flex flex-col gap-1.5 flex-1">
-              <span className="text-[11px] text-textDim">
-                {activePromptTab === 'diagram' && 'Системный промпт для генерации синтаксиса Mermaid.js:'}
-                {activePromptTab === 'analogy' && 'Системный промпт для простых жизненных аналогий:'}
-                {activePromptTab === 'summary' && 'Системный промпт для кратких тезисов и выводов:'}
-              </span>
-              <textarea
-                rows={8}
-                value={localPrompts[activePromptTab] || ''}
-                onChange={(e) => setLocalPrompts({
-                  ...localPrompts,
-                  [activePromptTab]: e.target.value
-                })}
-                className="w-full bg-black/50 border border-borderColor rounded-lg p-3 text-xs font-mono text-textMain focus:border-primary outline-none custom-scrollbar leading-relaxed resize-none"
-              />
-            </div>
+            {promptCategory === 'custom' ? (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs text-textDim">
+                    Создавайте любые быстрые команды для выделенного текста:
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={handleResetCommands}
+                      title="Сбросить к начальным примерам"
+                      className="flex items-center gap-1 text-[11px] text-textDim hover:text-white px-2 py-1 rounded hover:bg-white/5"
+                    >
+                      <RotateCcw size={11} /> Сбросить
+                    </button>
+                    <button
+                      onClick={() => {
+                        setEditingCommand(null);
+                        setCommandModalOpen(true);
+                      }}
+                      className="flex items-center gap-1 text-xs font-semibold bg-primary hover:bg-primaryGlow text-white px-2.5 py-1 rounded-lg shadow-sm"
+                    >
+                      <Plus size={13} /> Новая команда
+                    </button>
+                  </div>
+                </div>
+
+                {/* List of custom commands */}
+                <div className="flex flex-col gap-2">
+                  {customCommands.length === 0 ? (
+                    <div className="text-center py-8 text-xs text-textDim bg-black/20 rounded-xl border border-dashed border-borderColor">
+                      Нет пользовательских команд. Создайте первую!
+                    </div>
+                  ) : (
+                    customCommands.map((cmd) => (
+                      <div 
+                        key={cmd.id}
+                        className="p-3 rounded-xl bg-black/30 border border-borderColor hover:border-primary/40 transition-colors flex items-start justify-between gap-3"
+                      >
+                        <div className="flex items-start gap-2.5 min-w-0 flex-1">
+                          <span className="text-xl p-1.5 rounded-lg bg-white/5 shrink-0">
+                            {cmd.icon || '⚡'}
+                          </span>
+                          <div className="flex flex-col gap-1 min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-semibold text-white truncate">
+                                {cmd.title}
+                              </span>
+                              <span className="text-[10px] uppercase font-mono px-1.5 py-0.5 rounded bg-white/5 text-textDim border border-white/5 shrink-0">
+                                {cmd.type === 'diagram' ? '📊 Схема' : '📝 Текст'}
+                              </span>
+                            </div>
+                            <p className="text-[11px] text-textMuted line-clamp-2 leading-relaxed">
+                              {cmd.prompt}
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-1 shrink-0">
+                          <button
+                            onClick={() => {
+                              setEditingCommand(cmd);
+                              setCommandModalOpen(true);
+                            }}
+                            title="Редактировать команду"
+                            className="p-1.5 rounded hover:bg-white/10 text-textDim hover:text-white transition-colors"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (window.confirm(`Удалить команду "${cmd.title}"?`)) {
+                                deleteCustomCommand(cmd.id);
+                              }
+                            }}
+                            title="Удалить команду"
+                            className="p-1.5 rounded hover:bg-red-500/20 text-textDim hover:text-red-400 transition-colors"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="flex justify-between items-center">
+                  <div className="flex gap-1 bg-black/40 p-1 rounded-lg border border-borderColor">
+                    <button
+                      onClick={() => setActivePromptTab('diagram')}
+                      className={`px-3 py-1 text-xs rounded font-medium transition-all ${
+                        activePromptTab === 'diagram' ? 'bg-primary/30 text-primaryGlow border border-primary/40' : 'text-textMuted hover:text-white'
+                      }`}
+                    >
+                      📊 Диаграммы
+                    </button>
+                    <button
+                      onClick={() => setActivePromptTab('analogy')}
+                      className={`px-3 py-1 text-xs rounded font-medium transition-all ${
+                        activePromptTab === 'analogy' ? 'bg-primary/30 text-primaryGlow border border-primary/40' : 'text-textMuted hover:text-white'
+                      }`}
+                    >
+                      💡 Аналогии
+                    </button>
+                    <button
+                      onClick={() => setActivePromptTab('summary')}
+                      className={`px-3 py-1 text-xs rounded font-medium transition-all ${
+                        activePromptTab === 'summary' ? 'bg-primary/30 text-primaryGlow border border-primary/40' : 'text-textMuted hover:text-white'
+                      }`}
+                    >
+                      📝 Резюме
+                    </button>
+                  </div>
+
+                  <button
+                    onClick={handleResetPrompts}
+                    title="Сбросить базовые промпты к оригинальным"
+                    className="flex items-center gap-1.5 text-xs text-textDim hover:text-white px-2 py-1 rounded hover:bg-white/5 transition-colors"
+                  >
+                    <RotateCcw size={12} /> Сбросить всё
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-1.5 flex-1">
+                  <span className="text-[11px] text-textDim">
+                    {activePromptTab === 'diagram' && 'Системный промпт для генерации синтаксиса Mermaid.js:'}
+                    {activePromptTab === 'analogy' && 'Системный промпт для простых жизненных аналогий:'}
+                    {activePromptTab === 'summary' && 'Системный промпт для кратких тезисов и выводов:'}
+                  </span>
+                  <textarea
+                    rows={8}
+                    value={localPrompts[activePromptTab] || ''}
+                    onChange={(e) => setLocalPrompts({
+                      ...localPrompts,
+                      [activePromptTab]: e.target.value
+                    })}
+                    className="w-full bg-black/50 border border-borderColor rounded-lg p-3 text-xs font-mono text-textMain focus:border-primary outline-none custom-scrollbar leading-relaxed resize-none"
+                  />
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -282,6 +407,23 @@ export default function SettingsModal() {
           </div>
         </div>
       </div>
+
+      {/* Command Modal for creating/editing from Settings */}
+      <CommandModal
+        isOpen={commandModalOpen}
+        onClose={() => {
+          setCommandModalOpen(false);
+          setEditingCommand(null);
+        }}
+        editingCommand={editingCommand}
+        onSave={(cmd) => {
+          if (editingCommand) {
+            updateCustomCommand(editingCommand.id, cmd);
+          } else {
+            addCustomCommand(cmd);
+          }
+        }}
+      />
     </div>
   );
 }

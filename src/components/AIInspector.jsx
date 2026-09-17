@@ -1,8 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, DEFAULT_PROMPTS } from '../store/useStore';
-import { Lightbulb, Network, FileText, Maximize2, Trash2, Loader2, Sparkles } from 'lucide-react';
+import { Lightbulb, Network, FileText, Maximize2, Trash2, Loader2, Sparkles, Plus, Edit2 } from 'lucide-react';
 import mermaid from 'mermaid';
 import DiagramModal from './DiagramModal';
+import CommandModal from './CommandModal';
 
 mermaid.initialize({
   startOnLoad: false,
@@ -28,7 +29,11 @@ const LANGUAGE_NAMES = {
 };
 
 export default function AIInspector() {
-  const { apiKey, model, language, prompts, setSettingsOpen } = useStore();
+  const { 
+    apiKey, model, language, prompts, setSettingsOpen,
+    customCommands, addCustomCommand, updateCustomCommand, deleteCustomCommand
+  } = useStore();
+  
   const [selectedText, setSelectedText] = useState('');
   const [cards, setCards] = useState(() => {
     try {
@@ -39,6 +44,8 @@ export default function AIInspector() {
   });
 
   const [fullscreenDiagram, setFullscreenDiagram] = useState({ isOpen: false, svg: '', title: '' });
+  const [commandModalOpen, setCommandModalOpen] = useState(false);
+  const [editingCommand, setEditingCommand] = useState(null);
 
   // Sync cards with localStorage
   useEffect(() => {
@@ -73,7 +80,7 @@ export default function AIInspector() {
     };
   }, []);
 
-  const triggerAI = async (type) => {
+  const triggerAI = async (type, customCmd = null) => {
     if (!selectedText) return;
 
     if (!apiKey) {
@@ -82,10 +89,15 @@ export default function AIInspector() {
       return;
     }
 
+    const isDiagram = customCmd ? customCmd.type === 'diagram' : type === 'diagram';
+    const cardTitle = customCmd ? `${customCmd.icon} ${customCmd.title}` : null;
+
     const cardId = 'card_' + Date.now();
     const newCard = {
       id: cardId,
       type,
+      title: cardTitle,
+      isDiagram,
       quote: selectedText,
       loading: true,
       content: '',
@@ -94,22 +106,30 @@ export default function AIInspector() {
 
     setCards(prev => [newCard, ...prev]);
 
-    // Use customized prompt and selected language
-    const basePrompt = prompts?.[type] || DEFAULT_PROMPTS[type];
     const targetLang = LANGUAGE_NAMES[language] || 'Russian';
-
     let systemPrompt = '';
     let userPrompt = '';
 
-    if (type === 'diagram') {
-      systemPrompt = `${basePrompt}\nLanguage instruction: Node labels and text inside the diagram must be in ${targetLang}.`;
-      userPrompt = `Generate a Mermaid diagram for this excerpt:\n\n"${selectedText}"`;
-    } else if (type === 'analogy') {
-      systemPrompt = `${basePrompt}\nLanguage instruction: You MUST write your entire response strictly in ${targetLang}.`;
-      userPrompt = `Explain this excerpt with a simple analogy:\n\n"${selectedText}"`;
-    } else if (type === 'summary') {
-      systemPrompt = `${basePrompt}\nLanguage instruction: You MUST write your entire response strictly in ${targetLang}.`;
-      userPrompt = `Summarize the key takeaways (3 points):\n\n"${selectedText}"`;
+    if (customCmd) {
+      if (isDiagram) {
+        systemPrompt = `${DEFAULT_PROMPTS.diagram}\n\nTask: ${customCmd.prompt}\nLanguage instruction: Node labels and text inside the diagram must be in ${targetLang}.`;
+        userPrompt = `Generate a Mermaid diagram for this excerpt:\n\n"${selectedText}"`;
+      } else {
+        systemPrompt = `${customCmd.prompt}\n\nLanguage instruction: You MUST write your entire response strictly in ${targetLang}.`;
+        userPrompt = `Analyze and respond based on your task instructions for this excerpt:\n\n"${selectedText}"`;
+      }
+    } else {
+      const basePrompt = prompts?.[type] || DEFAULT_PROMPTS[type];
+      if (type === 'diagram') {
+        systemPrompt = `${basePrompt}\nLanguage instruction: Node labels and text inside the diagram must be in ${targetLang}.`;
+        userPrompt = `Generate a Mermaid diagram for this excerpt:\n\n"${selectedText}"`;
+      } else if (type === 'analogy') {
+        systemPrompt = `${basePrompt}\nLanguage instruction: You MUST write your entire response strictly in ${targetLang}.`;
+        userPrompt = `Explain this excerpt with a simple analogy:\n\n"${selectedText}"`;
+      } else if (type === 'summary') {
+        systemPrompt = `${basePrompt}\nLanguage instruction: You MUST write your entire response strictly in ${targetLang}.`;
+        userPrompt = `Summarize the key takeaways (3 points):\n\n"${selectedText}"`;
+      }
     }
 
     try {
@@ -140,7 +160,7 @@ export default function AIInspector() {
       const rawOutput = data.choices?.[0]?.message?.content || 'Нет ответа от модели';
 
       let renderedSvg = null;
-      if (type === 'diagram') {
+      if (isDiagram) {
         const cleanCode = rawOutput.replace(/```mermaid/gi, '').replace(/```/g, '').trim();
         try {
           const { svg } = await mermaid.render('mermaid_' + cardId, cleanCode);
@@ -245,13 +265,14 @@ export default function AIInspector() {
               "{selectedText}"
             </div>
 
-            <div className="grid grid-cols-1 gap-2 pt-1">
+            <div className="flex flex-col gap-2 pt-1">
               <button 
                 onClick={() => triggerAI('diagram')}
                 className="w-full py-2.5 px-3 rounded-lg bg-primary hover:bg-primaryGlow text-white text-xs font-semibold transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2 cursor-pointer"
               >
                 <Network size={14} /> 📊 Визуализировать архитектуру
               </button>
+              
               <div className="grid grid-cols-2 gap-2">
                 <button 
                   onClick={() => triggerAI('analogy')}
@@ -265,6 +286,50 @@ export default function AIInspector() {
                 >
                   <FileText size={13} className="text-accentCyan" /> Резюме
                 </button>
+              </div>
+
+              {/* Custom Commands Section */}
+              <div className="mt-1 pt-2 border-t border-white/10 flex flex-col gap-2">
+                <div className="flex items-center justify-between">
+                  <span className="text-[11px] font-semibold text-textDim uppercase tracking-wider">
+                    Мои команды ({customCommands.length})
+                  </span>
+                  <button
+                    onClick={() => {
+                      setEditingCommand(null);
+                      setCommandModalOpen(true);
+                    }}
+                    className="flex items-center gap-1 text-[11px] text-primaryGlow hover:text-white bg-primary/10 hover:bg-primary/20 px-2 py-0.5 rounded transition-colors"
+                  >
+                    <Plus size={12} /> + Команда
+                  </button>
+                </div>
+
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
+                  {customCommands.map((cmd) => (
+                    <div key={cmd.id} className="group relative flex items-center">
+                      <button
+                        onClick={() => triggerAI(cmd.id, cmd)}
+                        className="w-full py-2 pl-2.5 pr-7 rounded-lg bg-white/5 hover:bg-primary/15 hover:border-primary/40 text-textMain border border-borderColor text-xs font-medium transition-all text-left flex items-center gap-1.5 truncate cursor-pointer shadow-sm"
+                        title={cmd.prompt}
+                      >
+                        <span className="text-sm shrink-0">{cmd.icon || '⚡'}</span>
+                        <span className="truncate">{cmd.title}</span>
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingCommand(cmd);
+                          setCommandModalOpen(true);
+                        }}
+                        title="Редактировать команду"
+                        className="absolute right-1.5 p-1 rounded hover:bg-white/20 text-textDim hover:text-white opacity-0 group-hover:opacity-100 transition-opacity"
+                      >
+                        <Edit2 size={11} />
+                      </button>
+                    </div>
+                  ))}
+                </div>
               </div>
             </div>
           </div>
@@ -280,12 +345,23 @@ export default function AIInspector() {
             <p className="text-xs text-textMuted max-w-xs leading-relaxed mb-4">
               Выделите фрагмент текста в книге или нажмите кнопку "+ Свой текст" выше, чтобы сгенерировать архитектурную схему или аналогию.
             </p>
-            <button
-              onClick={() => setShowInput(true)}
-              className="px-3.5 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-primaryGlow text-xs font-medium hover:bg-primary/30 transition-all"
-            >
-              Ввести фрагмент вручную
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setShowInput(true)}
+                className="px-3 py-1.5 rounded-lg bg-primary/20 border border-primary/30 text-primaryGlow text-xs font-medium hover:bg-primary/30 transition-all"
+              >
+                Ввести фрагмент вручную
+              </button>
+              <button
+                onClick={() => {
+                  setEditingCommand(null);
+                  setCommandModalOpen(true);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/5 border border-borderColor text-textMain text-xs font-medium hover:bg-white/10 transition-all flex items-center gap-1.5"
+              >
+                <Plus size={13} /> Новая команда
+              </button>
+            </div>
           </div>
         )}
 
@@ -297,9 +373,11 @@ export default function AIInspector() {
           >
             <div className="flex items-center justify-between border-b border-white/5 pb-2">
               <span className="text-xs font-semibold text-primaryGlow uppercase tracking-wider flex items-center gap-1.5">
-                {card.type === 'diagram' && '📊 Диаграмма'}
-                {card.type === 'analogy' && '💡 Аналогия'}
-                {card.type === 'summary' && '📝 Резюме'}
+                {card.title || (
+                  card.type === 'diagram' ? '📊 Диаграмма' : 
+                  card.type === 'analogy' ? '💡 Аналогия' : 
+                  card.type === 'summary' ? '📝 Резюме' : '⚡ Ответ ИИ'
+                )}
               </span>
               <div className="flex items-center gap-1">
                 {card.svg && (
@@ -332,7 +410,7 @@ export default function AIInspector() {
               </div>
             ) : (
               <div>
-                {card.type === 'diagram' && card.svg ? (
+                {(card.isDiagram || card.type === 'diagram') && card.svg ? (
                   <div 
                     onClick={() => setFullscreenDiagram({ isOpen: true, svg: card.svg, title: card.quote })}
                     className="overflow-hidden bg-[#0a0d14] p-3 rounded-lg cursor-pointer border border-white/5 hover:border-primary/40 transition-colors flex items-center justify-center"
@@ -355,6 +433,23 @@ export default function AIInspector() {
         onClose={() => setFullscreenDiagram({ isOpen: false, svg: '', title: '' })}
         svgContent={fullscreenDiagram.svg}
         title={fullscreenDiagram.title}
+      />
+
+      {/* Create / Edit Custom Command Modal */}
+      <CommandModal
+        isOpen={commandModalOpen}
+        onClose={() => {
+          setCommandModalOpen(false);
+          setEditingCommand(null);
+        }}
+        editingCommand={editingCommand}
+        onSave={(cmd) => {
+          if (editingCommand) {
+            updateCustomCommand(editingCommand.id, cmd);
+          } else {
+            addCustomCommand(cmd);
+          }
+        }}
       />
     </aside>
   );
