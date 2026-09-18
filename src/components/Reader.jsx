@@ -3,14 +3,40 @@ import { useStore } from '../store/useStore';
 import { ChevronLeft, ChevronRight, Sparkles, CheckCircle2, Bookmark, PenTool } from 'lucide-react';
 
 const HIGHLIGHT_COLORS = [
-  { id: 'yellow', value: 'rgba(234, 179, 8, 0.4)' }, // bg-yellow-500/40
-  { id: 'green', value: 'rgba(34, 197, 94, 0.4)' },  // bg-green-500/40
-  { id: 'blue', value: 'rgba(59, 130, 246, 0.4)' },  // bg-blue-500/40
-  { id: 'purple', value: 'rgba(168, 85, 247, 0.4)' } // bg-purple-500/40
+  { id: 'yellow', value: 'rgba(245, 158, 11, 0.16)', dotColor: '#f59e0b', label: 'Янтарный' },
+  { id: 'green', value: 'rgba(34, 197, 94, 0.16)', dotColor: '#22c55e', label: 'Изумрудный' },
+  { id: 'blue', value: 'rgba(59, 130, 246, 0.16)', dotColor: '#3b82f6', label: 'Лазурный' },
+  { id: 'purple', value: 'rgba(168, 85, 247, 0.16)', dotColor: '#a855f7', label: 'Аметистовый' }
 ];
 
 function escapeRegExp(str) {
   return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function getHighlightStyles(rawColor) {
+  let baseRgb = '245, 158, 11'; // subtle amber by default
+  let borderRgb = '245, 158, 11';
+
+  if (typeof rawColor === 'string') {
+    if (rawColor.includes('34, 197, 94') || rawColor.includes('green')) {
+      baseRgb = '34, 197, 94';
+      borderRgb = '34, 197, 94';
+    } else if (rawColor.includes('59, 130, 246') || rawColor.includes('blue')) {
+      baseRgb = '59, 130, 246';
+      borderRgb = '59, 130, 246';
+    } else if (rawColor.includes('168, 85, 247') || rawColor.includes('purple')) {
+      baseRgb = '168, 85, 247';
+      borderRgb = '168, 85, 247';
+    } else if (rawColor.includes('234, 179, 8') || rawColor.includes('yellow') || rawColor.includes('amber')) {
+      baseRgb = '245, 158, 11';
+      borderRgb = '245, 158, 11';
+    }
+  }
+
+  return {
+    bg: `rgba(${baseRgb}, 0.16)`,
+    border: `rgba(${borderRgb}, 0.5)`
+  };
 }
 
 function applyHighlightToHtml(html, highlight) {
@@ -18,14 +44,16 @@ function applyHighlightToHtml(html, highlight) {
   const words = highlight.text.trim().split(/\s+/).filter(Boolean);
   if (words.length === 0) return html;
 
+  const styles = getHighlightStyles(highlight.color);
+  const markTag = (content) => 
+    `<mark id="highlight-${highlight.id}" data-highlight-id="${highlight.id}" style="background-color: ${styles.bg}; border-bottom: 2px solid ${styles.border}; color: inherit; padding: 1px 3px; border-radius: 3px; cursor: pointer;" title="${highlight.note || 'Заметка / Хайлайт'}">${content}</mark>`;
+
   // Build pattern matching words with arbitrary HTML tags and whitespace in-between
   const pattern = words.map(w => escapeRegExp(w)).join('(?:\\s*<[^>]+>\\s*|\\s+)');
   try {
     const regex = new RegExp(pattern, 'i');
     if (regex.test(html)) {
-      return html.replace(regex, (match) => {
-        return `<mark id="highlight-${highlight.id}" data-highlight-id="${highlight.id}" style="background-color: ${highlight.color}44; border-bottom: 2px solid ${highlight.color}; color: inherit; padding: 2px 4px; border-radius: 4px; cursor: pointer;" title="${highlight.note || 'Заметка / Хайлайт'}">${match}</mark>`;
-      });
+      return html.replace(regex, (match) => markTag(match));
     }
   } catch (e) {
     console.warn('[Reader] Regex highlight failed:', e);
@@ -33,7 +61,7 @@ function applyHighlightToHtml(html, highlight) {
 
   // Fallback: simple string replacement if regex fails
   if (html.includes(highlight.text)) {
-    return html.replace(highlight.text, `<mark id="highlight-${highlight.id}" data-highlight-id="${highlight.id}" style="background-color: ${highlight.color}44; border-bottom: 2px solid ${highlight.color}; color: inherit; padding: 2px 4px; border-radius: 4px; cursor: pointer;" title="${highlight.note || 'Заметка / Хайлайт'}">${highlight.text}</mark>`);
+    return html.replace(highlight.text, markTag(highlight.text));
   }
 
   return html;
@@ -293,11 +321,11 @@ export default function Reader() {
                 <button
                   key={c.id}
                   onClick={() => handleHighlight(c.value)}
-                  className="w-8 h-8 rounded-full border border-white/20 hover:scale-110 transition-transform flex items-center justify-center"
-                  style={{ backgroundColor: c.value.replace('0.4', '0.8') }}
-                  title={`Выделить цветом`}
+                  className="w-8 h-8 rounded-full border border-white/20 hover:scale-110 transition-transform flex items-center justify-center cursor-pointer shadow-sm"
+                  style={{ backgroundColor: c.dotColor }}
+                  title={`Выделить цветом: ${c.label}`}
                 >
-                  <PenTool size={14} className="text-white opacity-80" />
+                  <PenTool size={14} className="text-white opacity-90" />
                 </button>
               ))}
               
