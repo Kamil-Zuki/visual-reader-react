@@ -4,58 +4,84 @@
 import Database from '@tauri-apps/plugin-sql';
 
 let dbInstance = null;
+let dbInitPromise = null; // singleton promise to prevent race conditions
 let isTauri = false;
+let dbReady = false;
+let writeQueue = []; // buffer writes that arrive before DB is ready
 
 try {
   isTauri = window.__TAURI_INTERNALS__ !== undefined || window.__TAURI__ !== undefined;
 } catch (e) {}
 
+async function flushWriteQueue() {
+  while (writeQueue.length > 0) {
+    const fn = writeQueue.shift();
+    try { await fn(); } catch (e) { console.error('[DB] Write queue flush error:', e); }
+  }
+}
+
 export async function openDB() {
   if (dbInstance) return dbInstance;
-  
+
+  // If already initializing, return the same promise (no duplicate connections)
+  if (dbInitPromise) return dbInitPromise;
+
   if (!isTauri) {
-    console.warn('Running outside Tauri. SQLite is not available. Using in-memory mock for now.');
-    // Mock DB for browser dev
+    console.warn('Running outside Tauri. SQLite is not available. Using localStorage mock.');
     dbInstance = {
       execute: async () => [],
       select: async () => [],
     };
+    dbReady = true;
     return dbInstance;
   }
 
-  try {
-    dbInstance = await Database.load('sqlite:visual-reader.db');
-    
-    // Initialize schema
-    await dbInstance.execute(`
-      CREATE TABLE IF NOT EXISTS books (
-        id TEXT PRIMARY KEY,
-        title TEXT,
-        author TEXT,
-        data TEXT NOT NULL,
-        isDefault INTEGER,
-        createdAt INTEGER
-      );
-    `);
-    
-    await dbInstance.execute(`
-      CREATE TABLE IF NOT EXISTS key_value_store (
-        key TEXT PRIMARY KEY,
-        value TEXT NOT NULL
-      );
-    `);
+  dbInitPromise = (async () => {
+    try {
+      console.log('[DB] Loading SQLite database...');
+      const db = await Database.load('sqlite:visual-reader.db');
+      console.log('[DB] Database loaded. Creating schema...');
 
-    return dbInstance;
-  } catch (error) {
-    console.error('Failed to load SQLite db:', error);
-    throw error;
-  }
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS books (
+          id TEXT PRIMARY KEY,
+          title TEXT,
+          author TEXT,
+          data TEXT NOT NULL,
+          isDefault INTEGER,
+          createdAt INTEGER
+        );
+      `);
+
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS key_value_store (
+          key TEXT PRIMARY KEY,
+          value TEXT NOT NULL
+        );
+      `);
+
+      console.log('[DB] Schema ready.');
+      dbInstance = db;
+      dbReady = true;
+      await flushWriteQueue();
+      return dbInstance;
+    } catch (error) {
+      dbInitPromise = null; // allow retry on next call
+      console.error('[DB] Failed to initialize:', error);
+      throw error;
+    }
+  })();
+
+  return dbInitPromise;
 }
 
 export async function saveBookToDB(book) {
-  const db = await openDB();
   if (!isTauri) return book; // mock
-  
+  if (!dbReady) {
+    writeQueue.push(() => saveBookToDB(book));
+    return book;
+  }
+  const db = await openDB();
   const dataStr = JSON.stringify(book);
   await db.execute(
     'INSERT OR REPLACE INTO books (id, title, author, data, isDefault, createdAt) VALUES ($1, $2, $3, $4, $5, $6)',
@@ -65,17 +91,15 @@ export async function saveBookToDB(book) {
 }
 
 export async function getAllBooksFromDB() {
-  const db = await openDB();
   if (!isTauri) return []; // mock
-  
+  const db = await openDB();
   const result = await db.select('SELECT data FROM books');
   return result.map(row => JSON.parse(row.data));
 }
 
 export async function getBookByIdFromDB(id) {
-  const db = await openDB();
   if (!isTauri) return null; // mock
-  
+  const db = await openDB();
   const result = await db.select('SELECT data FROM books WHERE id = $1', [id]);
   if (result.length > 0) {
     return JSON.parse(result[0].data);
@@ -84,20 +108,24 @@ export async function getBookByIdFromDB(id) {
 }
 
 export async function deleteBookFromDB(id) {
-  const db = await openDB();
   if (!isTauri) return true;
-  
+  const db = await openDB();
   await db.execute('DELETE FROM books WHERE id = $1', [id]);
   return true;
 }
 
 // Key-Value store functions for Zustand persistence
 export async function setStoreValue(key, value) {
-  const db = await openDB();
   if (!isTauri) {
     localStorage.setItem(key, JSON.stringify(value));
     return;
   }
+  // If DB not ready yet, queue the write
+  if (!dbReady) {
+    writeQueue.push(() => setStoreValue(key, value));
+    return;
+  }
+  const db = await openDB();
   await db.execute(
     'INSERT OR REPLACE INTO key_value_store (key, value) VALUES ($1, $2)',
     [key, JSON.stringify(value)]
@@ -105,12 +133,11 @@ export async function setStoreValue(key, value) {
 }
 
 export async function getStoreValue(key, defaultValue = null) {
-  const db = await openDB();
   if (!isTauri) {
     const saved = localStorage.getItem(key);
     return saved ? JSON.parse(saved) : defaultValue;
   }
-  
+  const db = await openDB();
   const result = await db.select('SELECT value FROM key_value_store WHERE key = $1', [key]);
   if (result.length > 0) {
     try {

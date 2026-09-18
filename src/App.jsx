@@ -90,7 +90,7 @@ function App() {
 
   useEffect(() => {
     const initApp = async () => {
-      // 1. Немедленно показываем книгу, чтобы интерфейс загрузился мгновенно
+      // 1. Сразу показываем книгу по умолчанию — интерфейс моментальный
       const defaultBookData = {
         id: 'default_ddia',
         title: BOOK_DATA?.title || 'Designing Data-Intensive Applications',
@@ -98,17 +98,14 @@ function App() {
         chapters: BOOK_DATA?.chapters || [],
         isDefault: true
       };
-
-      // Показываем книгу по умолчанию сразу же
       setCurrentBook(defaultBookData, 'default_ddia');
 
-      // 2. Асинхронно в фоне загружаем базу данных (настройки, закладки и т.д.)
+      // 2. В фоне инициализируем БД — без тайм-аута, чтобы она успела создать таблицы
       try {
-        const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error("DB timeout")), ms));
-        await Promise.race([openDB(), timeout(2000)]);
-        await Promise.race([initStoreFromDB(), timeout(2000)]);
+        await openDB();           // создаёт таблицы если нужно
+        await initStoreFromDB();  // загружает настройки, закладки, хайлайты
 
-        // Если после загрузки настроек оказалось, что активна другая книга - загружаем её
+        // Если последняя активная книга — не дефолтная, загружаем её
         const savedBookId = useStore.getState().currentBookId;
         if (savedBookId && savedBookId !== 'default_ddia') {
           const book = await getBookByIdFromDB(savedBookId);
@@ -117,7 +114,7 @@ function App() {
           }
         }
       } catch (e) {
-        console.error("DB init failed or timed out in background:", e);
+        console.error('[App] DB init failed in background:', e);
       }
     };
     initApp();
