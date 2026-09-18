@@ -179,6 +179,24 @@ export const useStore = create((set) => ({
   isGraphOpen: false,
   setGraphOpen: (isOpen) => set({ isGraphOpen: isOpen }),
 
+  // --- P2P WebRTC / Yjs Sync State ---
+  isSyncModalOpen: false,
+  setSyncModalOpen: (isOpen) => set({ isSyncModalOpen: isOpen }),
+  syncStatus: 'disconnected', // 'disconnected' | 'searching' | 'connected'
+  connectedPeers: [],
+  lastSyncedAt: null,
+  syncSettings: {
+    enabled: false,
+    roomId: '',
+    password: '',
+    deviceName: ''
+  },
+  setSyncSettings: (newSettings) => set((state) => {
+    const merged = { ...state.syncSettings, ...newSettings };
+    setStoreValue('p2p_sync_settings', merged);
+    return { syncSettings: merged };
+  }),
+
   // Desktop Panels Visibility & Widths
   isSidebarOpen: true,
   toggleSidebar: () => set((state) => {
@@ -221,7 +239,8 @@ export async function initStoreFromDB() {
   const [
     apiKey, model, language, prompts, customCommands, activeBookId,
     readSections, bookmarks, highlights,
-    sidebarOpen, inspectorOpen, sidebarWidth, inspectorWidth
+    sidebarOpen, inspectorOpen, sidebarWidth, inspectorWidth,
+    syncSettings
   ] = await Promise.all([
     getStoreValue('openrouter_api_key', ''),
     getStoreValue('openrouter_model', 'openrouter/free'),
@@ -236,6 +255,12 @@ export async function initStoreFromDB() {
     getStoreValue('ddia_inspector_open', true),
     getStoreValue('ddia_sidebar_width', 300),
     getStoreValue('ddia_inspector_width', 420),
+    getStoreValue('p2p_sync_settings', {
+      enabled: false,
+      roomId: '',
+      password: '',
+      deviceName: ''
+    }),
   ]);
 
   useStore.setState({
@@ -246,6 +271,8 @@ export async function initStoreFromDB() {
     isSidebarOpen: sidebarOpen !== false && sidebarOpen !== 'false',
     isInspectorOpen: inspectorOpen !== false && inspectorOpen !== 'false',
     sidebarWidth: parseInt(sidebarWidth, 10) || 300,
-    inspectorWidth: parseInt(inspectorWidth, 10) || 420
+    inspectorWidth: parseInt(inspectorWidth, 10) || 420,
+    syncSettings: syncSettings || { enabled: false, roomId: '', password: '', deviceName: '' }
   });
 }
+

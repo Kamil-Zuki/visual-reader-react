@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStore, DEFAULT_PROMPTS } from '../store/useStore';
-import { X, Key, Cpu, Sparkles, Globe, MessageSquareCode, RotateCcw, Check, Plus, Edit2, Trash2 } from 'lucide-react';
+import { X, Key, Cpu, Sparkles, Globe, MessageSquareCode, RotateCcw, Check, Plus, Edit2, Trash2, Radio } from 'lucide-react';
 import CommandModal from './CommandModal';
 
 export default function SettingsModal() {
@@ -10,7 +10,8 @@ export default function SettingsModal() {
     model, setModel,
     language, setLanguage,
     prompts, setPrompts, resetPrompts,
-    customCommands, addCustomCommand, updateCustomCommand, deleteCustomCommand, resetCustomCommands
+    customCommands, addCustomCommand, updateCustomCommand, deleteCustomCommand, resetCustomCommands,
+    setSyncModalOpen, syncStatus, syncSettings, connectedPeers
   } = useStore();
   
   const [activeTab, setActiveTab] = useState('general'); // 'general' | 'prompts'
@@ -206,6 +207,40 @@ export default function SettingsModal() {
               <span className="text-[11px] text-textDim">
                 На этом языке ИИ будет составлять объяснения, схемы и ответы на ваши команды.
               </span>
+            </div>
+
+            {/* P2P Sync shortcut */}
+            <div className="p-3 bg-white/[0.02] border border-borderColor rounded-xl flex items-center justify-between mt-1">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
+                  <Radio size={16} />
+                </div>
+                <div>
+                  <div className="text-xs font-semibold text-white flex items-center gap-2">
+                    P2P Синхронизация (WebRTC)
+                    <span className={`w-2 h-2 rounded-full ${
+                      syncSettings?.enabled 
+                        ? (syncStatus === 'connected' ? 'bg-accentEmerald' : 'bg-amber-400') 
+                        : 'bg-textMuted/40'
+                    }`}></span>
+                  </div>
+                  <div className="text-[11px] text-textMuted">
+                    {syncSettings?.enabled 
+                      ? (syncStatus === 'connected' ? `Активно (${connectedPeers?.length || 0} устр.)` : 'Поиск устройств...') 
+                      : 'Выключена'}
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  setSettingsOpen(false);
+                  setSyncModalOpen(true);
+                }}
+                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-medium text-white border border-white/10 transition-colors cursor-pointer"
+              >
+                Настроить P2P
+              </button>
             </div>
           </div>
         )}

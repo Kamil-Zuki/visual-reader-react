@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useStore, initStoreFromDB } from './store/useStore';
-import { openDB, getAllBooksFromDB, getBookByIdFromDB, saveBookToDB } from './utils/db';
+import { openDB, getBookByIdFromDB } from './utils/db';
 import { BOOK_DATA } from './data/book_data';
 import {
   BookOpen,
@@ -15,7 +15,8 @@ import {
   PanelRight,
   PanelRightOpen,
   PenTool,
-  Network
+  Network,
+  Radio
 } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
@@ -25,15 +26,18 @@ import LibraryModal from './components/LibraryModal';
 import SettingsModal from './components/SettingsModal';
 import NotesModal from './components/NotesModal';
 import ConceptGraphModal from './components/ConceptGraphModal';
+import SyncModal from './components/SyncModal';
 import PanelResizer from './components/PanelResizer';
+import { initSyncServiceFromSettings, connectSync } from './services/syncService';
 
 function App() {
   const {
-    currentBook, setCurrentBook, currentBookId,
+    currentBook, setCurrentBook,
     setLibraryOpen, setSettingsOpen, setNotesOpen, setGraphOpen, apiKey,
     mobileTab, setMobileTab,
-    isSidebarOpen, toggleSidebar, setSidebarOpen, sidebarWidth, setSidebarWidth,
-    isInspectorOpen, toggleInspector, setInspectorOpen, inspectorWidth, setInspectorWidth
+    isSidebarOpen, toggleSidebar, setSidebarOpen, setSidebarWidth,
+    isInspectorOpen, toggleInspector, setInspectorOpen, setInspectorWidth,
+    setSyncModalOpen, syncStatus, connectedPeers, syncSettings
   } = useStore();
 
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -104,6 +108,39 @@ function App() {
       try {
         await openDB();           // создаёт таблицы если нужно
         await initStoreFromDB();  // загружает настройки, закладки, хайлайты
+
+        // Проверяем, передана ли комната синхронизации через URL/Hash для быстрого сопряжения по QR-коду
+        let urlParams = null;
+        try {
+          if (window.location.hash && window.location.hash.includes('sync_room=')) {
+            urlParams = new URLSearchParams(window.location.hash.substring(1));
+          } else if (window.location.search && window.location.search.includes('sync_room=')) {
+            urlParams = new URLSearchParams(window.location.search);
+          }
+        } catch (e) {
+          console.warn('[App] URL parse error:', e);
+        }
+
+        if (urlParams && urlParams.get('sync_room')) {
+          const urlRoom = urlParams.get('sync_room');
+          const urlPass = urlParams.get('sync_pass') || '';
+          console.log('[App] Auto-connecting to sync room from URL:', urlRoom);
+          const currentSettings = useStore.getState().syncSettings || {};
+          const newSettings = {
+            ...currentSettings,
+            enabled: true,
+            roomId: urlRoom,
+            password: urlPass
+          };
+          useStore.getState().setSyncSettings(newSettings);
+          connectSync(newSettings);
+        } else {
+          // Инициализируем P2P синхронизацию, если была включена в настройках
+          const savedSyncSettings = useStore.getState().syncSettings;
+          if (savedSyncSettings?.enabled && savedSyncSettings?.roomId) {
+            initSyncServiceFromSettings(savedSyncSettings);
+          }
+        }
 
         // Если последняя активная книга — не дефолтная, загружаем её
         const savedBookId = useStore.getState().currentBookId;
@@ -199,6 +236,44 @@ function App() {
           >
             <PenTool size={14} />
             <span className="hidden sm:inline">Заметки</span>
+          </button>
+
+          {/* P2P WebRTC Sync Status Button */}
+          <button
+            onClick={() => setSyncModalOpen(true)}
+            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-all cursor-pointer ${
+              !syncSettings?.enabled
+                ? 'bg-white/5 border-white/10 text-textDim hover:text-white'
+                : syncStatus === 'connected'
+                  ? 'border-accentEmerald/40 bg-accentEmerald/10 text-accentEmerald hover:bg-accentEmerald/20'
+                  : 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+            }`}
+            title={
+              !syncSettings?.enabled
+                ? 'P2P Синхронизация отключена (нажмите для настройки)'
+                : syncStatus === 'connected'
+                  ? `P2P синхронизация активна: подключено ${connectedPeers?.length || 0} устр.`
+                  : 'P2P: поиск устройств в комнате...'
+            }
+          >
+            {/* Status indicator dot */}
+            <div className={`w-2 h-2 rounded-full shrink-0 ${
+              !syncSettings?.enabled
+                ? 'bg-white/20'
+                : syncStatus === 'connected'
+                  ? 'bg-accentEmerald shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse'
+                  : 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)] animate-ping'
+            }`}></div>
+
+            <Radio size={14} className={syncStatus === 'connected' ? 'animate-pulse text-accentEmerald' : ''} />
+
+            <span className="hidden sm:inline">
+              {!syncSettings?.enabled
+                ? 'Синхр (выкл)'
+                : syncStatus === 'connected'
+                  ? `Синхр (${connectedPeers?.length || 0})`
+                  : 'Поиск пиров...'}
+            </span>
           </button>
 
           <button
@@ -328,6 +403,7 @@ function App() {
       <SettingsModal />
       <NotesModal />
       <ConceptGraphModal />
+      <SyncModal />
     </div>
   );
 }
