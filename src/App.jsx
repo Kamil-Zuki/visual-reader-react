@@ -2,15 +2,16 @@ import React, { useEffect, useState } from 'react';
 import { useStore, initStoreFromDB } from './store/useStore';
 import { openDB, getAllBooksFromDB, getBookByIdFromDB, saveBookToDB } from './utils/db';
 import { BOOK_DATA } from './data/book_data';
-import { 
-  BookOpen, 
-  Settings, 
-  Library, 
-  List, 
-  Sparkles, 
-  BookOpenText, 
+import {
+  BookOpen,
+  Settings,
+  Library,
+  List,
+  Sparkles,
+  BookOpenText,
   Download,
   PanelLeft,
+  PanelLeftOpen,
   PanelRight,
   PanelRightOpen,
   PenTool,
@@ -27,7 +28,7 @@ import ConceptGraphModal from './components/ConceptGraphModal';
 import PanelResizer from './components/PanelResizer';
 
 function App() {
-  const { 
+  const {
     currentBook, setCurrentBook, currentBookId,
     setLibraryOpen, setSettingsOpen, setNotesOpen, setGraphOpen, apiKey,
     mobileTab, setMobileTab,
@@ -89,10 +90,7 @@ function App() {
 
   useEffect(() => {
     const initApp = async () => {
-      await openDB();
-      await initStoreFromDB();
-      const books = await getAllBooksFromDB();
-      
+      // 1. Немедленно показываем книгу, чтобы интерфейс загрузился мгновенно
       const defaultBookData = {
         id: 'default_ddia',
         title: BOOK_DATA?.title || 'Designing Data-Intensive Applications',
@@ -101,19 +99,26 @@ function App() {
         isDefault: true
       };
 
-      let defaultExists = books.find(b => b.id === 'default_ddia');
-      // If doesn't exist or has empty/corrupted chapters, re-save
-      if (!defaultExists || (!defaultExists.chapters && !defaultExists.structure)) {
-        console.log('Saving DDIA book into DB...');
-        await saveBookToDB(defaultBookData);
-      }
+      // Показываем книгу по умолчанию сразу же
+      setCurrentBook(defaultBookData, 'default_ddia');
 
-      let targetId = currentBookId || 'default_ddia';
-      let book = await getBookByIdFromDB(targetId);
-      if (!book || (!book.chapters && !book.structure)) {
-        book = defaultBookData;
+      // 2. Асинхронно в фоне загружаем базу данных (настройки, закладки и т.д.)
+      try {
+        const timeout = (ms) => new Promise((_, reject) => setTimeout(() => reject(new Error("DB timeout")), ms));
+        await Promise.race([openDB(), timeout(2000)]);
+        await Promise.race([initStoreFromDB(), timeout(2000)]);
+
+        // Если после загрузки настроек оказалось, что активна другая книга - загружаем её
+        const savedBookId = useStore.getState().currentBookId;
+        if (savedBookId && savedBookId !== 'default_ddia') {
+          const book = await getBookByIdFromDB(savedBookId);
+          if (book && (book.chapters || book.structure)) {
+            setCurrentBook(book, book.id);
+          }
+        }
+      } catch (e) {
+        console.error("DB init failed or timed out in background:", e);
       }
-      setCurrentBook(book, book.id);
     };
     initApp();
   }, []);
@@ -126,11 +131,10 @@ function App() {
           {/* Sidebar toggle button on desktop */}
           <button
             onClick={toggleSidebar}
-            className={`p-1.5 rounded-lg border transition-colors cursor-pointer hidden md:flex items-center justify-center shrink-0 ${
-              isSidebarOpen 
-                ? 'bg-primary/15 border-primary/40 text-primaryGlow' 
+            className={`p-1.5 rounded-lg border transition-colors cursor-pointer hidden md:flex items-center justify-center shrink-0 ${isSidebarOpen
+                ? 'bg-primary/15 border-primary/40 text-primaryGlow'
                 : 'bg-white/5 border-white/10 text-textDim hover:text-white'
-            }`}
+              }`}
             title={isSidebarOpen ? 'Скрыть оглавление (Ctrl+B)' : 'Показать оглавление (Ctrl+B)'}
           >
             <PanelLeft size={16} />
@@ -146,11 +150,11 @@ function App() {
             </span>
           )}
         </div>
-        
+
         <div className="flex items-center gap-1.5 sm:gap-2.5">
           {/* PWA install button if prompt available */}
           {installPrompt && !isInstalled && (
-            <button 
+            <button
               onClick={handleInstallClick}
               className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 text-xs rounded-md bg-primary hover:bg-primaryGlow text-white font-medium shadow-md shadow-primary/20 transition-all cursor-pointer"
               title="Установить как PWA приложение"
@@ -163,45 +167,44 @@ function App() {
           {/* Inspector toggle button on desktop */}
           <button
             onClick={toggleInspector}
-            className={`px-2 sm:px-2.5 py-1.5 text-xs rounded-md border transition-colors cursor-pointer hidden md:flex items-center gap-1.5 ${
-              isInspectorOpen 
-                ? 'bg-primary/15 border-primary/40 text-primaryGlow font-medium' 
+            className={`px-2 sm:px-2.5 py-1.5 text-xs rounded-md border transition-colors cursor-pointer hidden md:flex items-center gap-1.5 ${isInspectorOpen
+                ? 'bg-primary/15 border-primary/40 text-primaryGlow font-medium'
                 : 'bg-white/5 border-white/10 text-textDim hover:text-white'
-            }`}
+              }`}
             title={isInspectorOpen ? 'Скрыть ИИ-инспектор (Ctrl+I)' : 'Показать ИИ-инспектор (Ctrl+I)'}
           >
             <PanelRight size={14} />
             <span className="hidden lg:inline">Инспектор</span>
           </button>
 
-          <button 
-            onClick={() => setLibraryOpen(true)} 
+          <button
+            onClick={() => setLibraryOpen(true)}
             className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
             title="Библиотека книг"
           >
-            <Library size={14} /> 
+            <Library size={14} />
             <span className="hidden sm:inline">Библиотека</span>
           </button>
 
-          <button 
-            onClick={() => setGraphOpen(true)} 
+          <button
+            onClick={() => setGraphOpen(true)}
             className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
             title="Граф концепций"
           >
-            <Network size={14} /> 
+            <Network size={14} />
             <span className="hidden sm:inline">Связи</span>
           </button>
 
-          <button 
-            onClick={() => setNotesOpen(true)} 
+          <button
+            onClick={() => setNotesOpen(true)}
             className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
             title="Ваши Заметки"
           >
-            <PenTool size={14} /> 
+            <PenTool size={14} />
             <span className="hidden sm:inline">Заметки</span>
           </button>
 
-          <button 
+          <button
             onClick={() => setSettingsOpen(true)}
             className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-colors cursor-pointer ${apiKey ? 'border-accentEmerald/30 bg-accentEmerald/10 text-accentEmerald hover:bg-accentEmerald/20' : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}
             title={apiKey ? 'OpenRouter API Key настроен' : 'Ключ API отсутствует'}
@@ -210,12 +213,12 @@ function App() {
             <span className="hidden md:inline">{apiKey ? 'API Active' : 'No API Key'}</span>
           </button>
 
-          <button 
-            onClick={() => setSettingsOpen(true)} 
+          <button
+            onClick={() => setSettingsOpen(true)}
             className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
             title="Настройки"
           >
-            <Settings size={14} /> 
+            <Settings size={14} />
             <span className="hidden sm:inline">Настройки</span>
           </button>
         </div>
@@ -294,9 +297,8 @@ function App() {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 bg-bgSidebar/95 backdrop-blur-md border-t border-borderColor flex items-center justify-around px-2 z-30 safe-bottom">
         <button
           onClick={() => setMobileTab('sidebar')}
-          className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
-            mobileTab === 'sidebar' ? 'text-primaryGlow font-semibold' : 'text-textDim hover:text-textMain'
-          }`}
+          className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${mobileTab === 'sidebar' ? 'text-primaryGlow font-semibold' : 'text-textDim hover:text-textMain'
+            }`}
         >
           <List size={18} />
           <span className="text-[10px] mt-0.5">Главы</span>
@@ -304,9 +306,8 @@ function App() {
 
         <button
           onClick={() => setMobileTab('reader')}
-          className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
-            mobileTab === 'reader' ? 'text-primaryGlow font-semibold' : 'text-textDim hover:text-textMain'
-          }`}
+          className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${mobileTab === 'reader' ? 'text-primaryGlow font-semibold' : 'text-textDim hover:text-textMain'
+            }`}
         >
           <BookOpenText size={18} />
           <span className="text-[10px] mt-0.5">Книга</span>
@@ -314,9 +315,8 @@ function App() {
 
         <button
           onClick={() => setMobileTab('ai')}
-          className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors relative ${
-            mobileTab === 'ai' ? 'text-primaryGlow font-semibold' : 'text-textDim hover:text-textMain'
-          }`}
+          className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors relative ${mobileTab === 'ai' ? 'text-primaryGlow font-semibold' : 'text-textDim hover:text-textMain'
+            }`}
         >
           <div className="relative">
             <Sparkles size={18} />
