@@ -86,6 +86,9 @@ export const useStore = create((set) => ({
   activeChapterIdx: 0,
   activeSectionIdx: 0,
   setActiveChapter: (cIdx, sIdx = 0) => set({ activeChapterIdx: cIdx, activeSectionIdx: sIdx, mobileTab: 'reader' }),
+
+  pendingScrollHighlightId: null,
+  setPendingScrollHighlightId: (id) => set({ pendingScrollHighlightId: id }),
   
   isAiLoading: false,
   setAiLoading: (loading) => set({ isAiLoading: loading }),

@@ -1,0 +1,106 @@
+name: Build Android APK
+
+on:
+  push:
+    branches:
+      - master
+      - main
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-android:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Java JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Setup Android SDK and NDK
+        run: |
+          echo "ANDROID_HOME=/usr/local/lib/android/sdk" >> $GITHUB_ENV
+          # Find latest pre-installed NDK version on GitHub runner
+          NDK_PATH=$(find /usr/local/lib/android/sdk/ndk -maxdepth 1 -mindepth 1 | sort -V | tail -n 1)
+          echo "Found NDK at: $NDK_PATH"
+          echo "NDK_HOME=$NDK_PATH" >> $GITHUB_ENV
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Initialize Android Project
+        run: |
+          npx tauri android init --ci --skip-targets-install
+
+      - name: Build Android APK
+        run: |
+          npx tauri android build --apk --target aarch64
+
+      - name: Sign APK for Easy Installation
+        run: |
+          # Generate temporary self-signed keystore for signing
+          keytool -genkey -v -keystore release.jks -alias visualreader -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass visualreader -keypass visualreader \
+            -dname "CN=VisualReader, OU=App, O=VisualReader, L=City, S=State, C=US"
+
+          # Locate the built APK
+          BUILT_APK=$(find src-tauri/gen/android/app/build/outputs/apk -name "*.apk" | head -n 1)
+          echo "Found built APK: $BUILT_APK"
+
+          # Find apksigner in Android build-tools
+          APKSIGNER=$(find $ANDROID_HOME/build-tools -name apksigner | sort -V | tail -n 1)
+          echo "Using apksigner: $APKSIGNER"
+
+          # Sign the APK
+          $APKSIGNER sign --ks release.jks --ks-pass pass:visualreader --key-pass pass:visualreader --out visual-reader-arm64.apk "$BUILT_APK"
+          
+          # Verify signed APK
+          $APKSIGNER verify visual-reader-arm64.apk
+          ls -lh visual-reader-arm64.apk
+
+      - name: Upload APK to Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: visual-reader-android-apk
+          path: visual-reader-arm64.apk
+          retention-days: 30
+
+      - name: Create / Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        if: github.ref == 'refs/heads/master' || github.ref == 'refs/heads/main'
+        with:
+          tag_name: v0.1.0-android
+          name: "Visual Reader Android APK v0.1.0"
+          body: |
+            ### 📱 Visual Reader для Android (ARM64)
+            - **Файл:** `visual-reader-arm64.apk`
+            - Собрано автоматически через GitHub Actions.
+            - Включает офлайн-чтение, P2P синхронизацию по WebRTC, AI-инспектор и граф концепций.
+            
+            **Установка на телефон:**
+            1. Скачайте `visual-reader-arm64.apk` на Android телефон.
+            2. Нажмите на файл для установки (разрешите установку из неизвестных источников при запросе).
+          files: visual-reader-arm64.apk
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

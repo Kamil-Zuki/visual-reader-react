@@ -9,8 +9,56 @@ const HIGHLIGHT_COLORS = [
   { id: 'purple', value: 'rgba(168, 85, 247, 0.4)' } // bg-purple-500/40
 ];
 
+function escapeRegExp(str) {
+  return str.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+function applyHighlightToHtml(html, highlight) {
+  if (!highlight.text || highlight.text.length < 3) return html;
+  const words = highlight.text.trim().split(/\s+/).filter(Boolean);
+  if (words.length === 0) return html;
+
+  // Build pattern matching words with arbitrary HTML tags and whitespace in-between
+  const pattern = words.map(w => escapeRegExp(w)).join('(?:\\s*<[^>]+>\\s*|\\s+)');
+  try {
+    const regex = new RegExp(pattern, 'i');
+    if (regex.test(html)) {
+      return html.replace(regex, (match) => {
+        return `<mark id="highlight-${highlight.id}" data-highlight-id="${highlight.id}" style="background-color: ${highlight.color}44; border-bottom: 2px solid ${highlight.color}; color: inherit; padding: 2px 4px; border-radius: 4px; cursor: pointer;" title="${highlight.note || 'Заметка / Хайлайт'}">${match}</mark>`;
+      });
+    }
+  } catch (e) {
+    console.warn('[Reader] Regex highlight failed:', e);
+  }
+
+  // Fallback: simple string replacement if regex fails
+  if (html.includes(highlight.text)) {
+    return html.replace(highlight.text, `<mark id="highlight-${highlight.id}" data-highlight-id="${highlight.id}" style="background-color: ${highlight.color}44; border-bottom: 2px solid ${highlight.color}; color: inherit; padding: 2px 4px; border-radius: 4px; cursor: pointer;" title="${highlight.note || 'Заметка / Хайлайт'}">${highlight.text}</mark>`);
+  }
+
+  return html;
+}
+
 export default function Reader() {
-  const { currentBook, currentBookId, activeChapterIdx, activeSectionIdx, setActiveChapter, setMobileTab, readSections, markSectionAsRead, unmarkSectionAsRead, bookmarks, addBookmark, removeBookmark, highlights, addHighlight } = useStore();
+  const { 
+    currentBook, 
+    currentBookId, 
+    activeChapterIdx, 
+    activeSectionIdx, 
+    setActiveChapter, 
+    setMobileTab, 
+    readSections, 
+    markSectionAsRead, 
+    unmarkSectionAsRead, 
+    bookmarks, 
+    addBookmark, 
+    removeBookmark, 
+    highlights, 
+    addHighlight,
+    pendingScrollHighlightId,
+    setPendingScrollHighlightId,
+    setNotesOpen
+  } = useStore();
   const contentRef = useRef(null);
   const [selectionRange, setSelectionRange] = useState(null);
   const [selectedText, setSelectedText] = useState('');
@@ -49,22 +97,42 @@ export default function Reader() {
     if (section && contentRef.current) {
       let html = section.html;
       
-      // Naive highlight restoration
-      const secHighlights = (highlights[currentBookId] || []).filter(h => h.chapterIdx === activeChapterIdx && h.sectionIdx === activeSectionIdx);
+      // Robust highlight restoration across HTML tags
+      const secHighlights = (highlights[currentBookId] || []).filter(
+        h => h.chapterIdx === activeChapterIdx && h.sectionIdx === activeSectionIdx
+      );
       secHighlights.forEach(h => {
-         if (h.text && h.text.length > 5) {
-            // Simple replace. If text spans HTML elements, this will fail to match, which is an acceptable fallback for now.
-            html = html.replace(h.text, `<mark style="background-color: ${h.color}; color: white;" class="rounded px-1 leading-normal cursor-pointer" title="${h.note || 'Хайлайт'}">${h.text}</mark>`);
-         }
+        html = applyHighlightToHtml(html, h);
       });
       
       contentRef.current.innerHTML = html;
-      // Scroll to top when section changes
-      if (contentRef.current.parentElement) {
+
+      // Handle scrolling to specific highlight if requested
+      if (pendingScrollHighlightId) {
+        const targetId = pendingScrollHighlightId;
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            const el = document.getElementById(`highlight-${targetId}`);
+            if (el) {
+              el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+              // Highlight pulse glow
+              el.style.boxShadow = '0 0 0 4px #6366f1, 0 0 24px rgba(99, 102, 241, 0.7)';
+              el.style.transition = 'box-shadow 0.4s ease';
+              setTimeout(() => {
+                if (el) el.style.boxShadow = 'none';
+              }, 2500);
+            } else if (contentRef.current?.parentElement) {
+              contentRef.current.parentElement.scrollTop = 0;
+            }
+            setPendingScrollHighlightId(null);
+          }, 80);
+        });
+      } else if (contentRef.current.parentElement) {
+        // Scroll to top when section changes normally
         contentRef.current.parentElement.scrollTop = 0;
       }
     }
-  }, [currentBook, activeChapterIdx, activeSectionIdx, section, highlights, currentBookId]);
+  }, [currentBook, activeChapterIdx, activeSectionIdx, section, highlights, currentBookId, pendingScrollHighlightId]);
 
   // Check selection for floating toolbar
   useEffect(() => {

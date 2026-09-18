@@ -3,7 +3,17 @@ import { useStore } from '../store/useStore';
 import { X, Download, Trash2, PenTool } from 'lucide-react';
 
 export default function NotesModal() {
-  const { isNotesOpen, setNotesOpen, currentBook, currentBookId, highlights, removeHighlight, updateHighlightNote, setActiveChapter } = useStore();
+  const { 
+    isNotesOpen, 
+    setNotesOpen, 
+    currentBook, 
+    currentBookId, 
+    highlights, 
+    removeHighlight, 
+    updateHighlightNote, 
+    setActiveChapter,
+    setPendingScrollHighlightId
+  } = useStore();
   const [editingId, setEditingId] = useState(null);
   const [noteText, setNoteText] = useState('');
 
@@ -142,10 +152,11 @@ export default function NotesModal() {
                       
                       <button
                         onClick={() => {
+                          setPendingScrollHighlightId(h.id);
                           setActiveChapter(h.chapterIdx, h.sectionIdx);
                           setNotesOpen(false);
                         }}
-                        className="text-xs text-textMuted hover:text-white underline underline-offset-2"
+                        className="text-xs text-textMuted hover:text-white underline underline-offset-2 transition-colors cursor-pointer"
                       >
                         Перейти к тексту
                       </button>
