@@ -12,6 +12,11 @@
     touch-action: manipulation;
     -webkit-tap-highlight-color: transparent;
   }
+
+  mark {
+    background-color: transparent;
+    color: inherit;
+  }
 }
 
 .safe-bottom {

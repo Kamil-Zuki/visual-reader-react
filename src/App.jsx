@@ -1,19 +1,22 @@
 import React, { useEffect, useState } from 'react';
-import { useStore } from './store/useStore';
-import { openDB, getAllBooksFromDB, getBookByIdFromDB, saveBookToDB } from './utils/db';
+import { useStore, initStoreFromDB } from './store/useStore';
+import { openDB, getBookByIdFromDB } from './utils/db';
 import { BOOK_DATA } from './data/book_data';
-import { 
-  BookOpen, 
-  Settings, 
-  Library, 
-  List, 
-  Sparkles, 
-  BookOpenText, 
+import {
+  BookOpen,
+  Settings,
+  Library,
+  List,
+  Sparkles,
+  BookOpenText,
   Download,
   PanelLeft,
-  PanelRight,
   PanelLeftOpen,
-  PanelRightOpen
+  PanelRight,
+  PanelRightOpen,
+  PenTool,
+  Network,
+  Radio
 } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
@@ -21,15 +24,20 @@ import Reader from './components/Reader';
 import AIInspector from './components/AIInspector';
 import LibraryModal from './components/LibraryModal';
 import SettingsModal from './components/SettingsModal';
+import NotesModal from './components/NotesModal';
+import ConceptGraphModal from './components/ConceptGraphModal';
+import SyncModal from './components/SyncModal';
 import PanelResizer from './components/PanelResizer';
+import { initSyncServiceFromSettings, connectSync } from './services/syncService';
 
 function App() {
-  const { 
-    currentBook, setCurrentBook, currentBookId,
-    setLibraryOpen, setSettingsOpen, apiKey,
+  const {
+    currentBook, setCurrentBook,
+    setLibraryOpen, setSettingsOpen, setNotesOpen, setGraphOpen, apiKey,
     mobileTab, setMobileTab,
-    isSidebarOpen, toggleSidebar, setSidebarOpen, sidebarWidth, setSidebarWidth,
-    isInspectorOpen, toggleInspector, setInspectorOpen, inspectorWidth, setInspectorWidth
+    isSidebarOpen, toggleSidebar, setSidebarOpen, setSidebarWidth,
+    isInspectorOpen, toggleInspector, setInspectorOpen, setInspectorWidth,
+    setSyncModalOpen, syncStatus, connectedPeers, syncSettings
   } = useStore();
 
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -86,9 +94,7 @@ function App() {
 
   useEffect(() => {
     const initApp = async () => {
-      await openDB();
-      const books = await getAllBooksFromDB();
-      
+      // 1. Сразу показываем книгу по умолчанию — интерфейс моментальный
       const defaultBookData = {
         id: 'default_ddia',
         title: BOOK_DATA?.title || 'Designing Data-Intensive Applications',
@@ -96,20 +102,57 @@ function App() {
         chapters: BOOK_DATA?.chapters || [],
         isDefault: true
       };
+      setCurrentBook(defaultBookData, 'default_ddia');
 
-      let defaultExists = books.find(b => b.id === 'default_ddia');
-      // If doesn't exist or has empty/corrupted chapters, re-save
-      if (!defaultExists || (!defaultExists.chapters && !defaultExists.structure)) {
-        console.log('Saving DDIA book into DB...');
-        await saveBookToDB(defaultBookData);
-      }
+      // 2. В фоне инициализируем БД — без тайм-аута, чтобы она успела создать таблицы
+      try {
+        await openDB();           // создаёт таблицы если нужно
+        await initStoreFromDB();  // загружает настройки, закладки, хайлайты
 
-      let targetId = currentBookId || 'default_ddia';
-      let book = await getBookByIdFromDB(targetId);
-      if (!book || (!book.chapters && !book.structure)) {
-        book = defaultBookData;
+        // Проверяем, передана ли комната синхронизации через URL/Hash для быстрого сопряжения по QR-коду
+        let urlParams = null;
+        try {
+          if (window.location.hash && window.location.hash.includes('sync_room=')) {
+            urlParams = new URLSearchParams(window.location.hash.substring(1));
+          } else if (window.location.search && window.location.search.includes('sync_room=')) {
+            urlParams = new URLSearchParams(window.location.search);
+          }
+        } catch (e) {
+          console.warn('[App] URL parse error:', e);
+        }
+
+        if (urlParams && urlParams.get('sync_room')) {
+          const urlRoom = urlParams.get('sync_room');
+          const urlPass = urlParams.get('sync_pass') || '';
+          console.log('[App] Auto-connecting to sync room from URL:', urlRoom);
+          const currentSettings = useStore.getState().syncSettings || {};
+          const newSettings = {
+            ...currentSettings,
+            enabled: true,
+            roomId: urlRoom,
+            password: urlPass
+          };
+          useStore.getState().setSyncSettings(newSettings);
+          connectSync(newSettings);
+        } else {
+          // Инициализируем P2P синхронизацию, если была включена в настройках
+          const savedSyncSettings = useStore.getState().syncSettings;
+          if (savedSyncSettings?.enabled && savedSyncSettings?.roomId) {
+            initSyncServiceFromSettings(savedSyncSettings);
+          }
+        }
+
+        // Если последняя активная книга — не дефолтная, загружаем её
+        const savedBookId = useStore.getState().currentBookId;
+        if (savedBookId && savedBookId !== 'default_ddia') {
+          const book = await getBookByIdFromDB(savedBookId);
+          if (book && (book.chapters || book.structure)) {
+            setCurrentBook(book, book.id);
+          }
+        }
+      } catch (e) {
+        console.error('[App] DB init failed in background:', e);
       }
-      setCurrentBook(book, book.id);
     };
     initApp();
   }, []);
@@ -122,11 +165,10 @@ function App() {
           {/* Sidebar toggle button on desktop */}
           <button
             onClick={toggleSidebar}
-            className={`p-1.5 rounded-lg border transition-colors cursor-pointer hidden md:flex items-center justify-center shrink-0 ${
-              isSidebarOpen 
-                ? 'bg-primary/15 border-primary/40 text-primaryGlow' 
+            className={`p-1.5 rounded-lg border transition-colors cursor-pointer hidden md:flex items-center justify-center shrink-0 ${isSidebarOpen
+                ? 'bg-primary/15 border-primary/40 text-primaryGlow'
                 : 'bg-white/5 border-white/10 text-textDim hover:text-white'
-            }`}
+              }`}
             title={isSidebarOpen ? 'Скрыть оглавление (Ctrl+B)' : 'Показать оглавление (Ctrl+B)'}
           >
             <PanelLeft size={16} />
@@ -142,11 +184,11 @@ function App() {
             </span>
           )}
         </div>
-        
+
         <div className="flex items-center gap-1.5 sm:gap-2.5">
           {/* PWA install button if prompt available */}
           {installPrompt && !isInstalled && (
-            <button 
+            <button
               onClick={handleInstallClick}
               className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 text-xs rounded-md bg-primary hover:bg-primaryGlow text-white font-medium shadow-md shadow-primary/20 transition-all cursor-pointer"
               title="Установить как PWA приложение"
@@ -159,27 +201,82 @@ function App() {
           {/* Inspector toggle button on desktop */}
           <button
             onClick={toggleInspector}
-            className={`px-2 sm:px-2.5 py-1.5 text-xs rounded-md border transition-colors cursor-pointer hidden md:flex items-center gap-1.5 ${
-              isInspectorOpen 
-                ? 'bg-primary/15 border-primary/40 text-primaryGlow font-medium' 
+            className={`px-2 sm:px-2.5 py-1.5 text-xs rounded-md border transition-colors cursor-pointer hidden md:flex items-center gap-1.5 ${isInspectorOpen
+                ? 'bg-primary/15 border-primary/40 text-primaryGlow font-medium'
                 : 'bg-white/5 border-white/10 text-textDim hover:text-white'
-            }`}
+              }`}
             title={isInspectorOpen ? 'Скрыть ИИ-инспектор (Ctrl+I)' : 'Показать ИИ-инспектор (Ctrl+I)'}
           >
             <PanelRight size={14} />
             <span className="hidden lg:inline">Инспектор</span>
           </button>
 
-          <button 
-            onClick={() => setLibraryOpen(true)} 
+          <button
+            onClick={() => setLibraryOpen(true)}
             className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
             title="Библиотека книг"
           >
-            <Library size={14} /> 
+            <Library size={14} />
             <span className="hidden sm:inline">Библиотека</span>
           </button>
 
-          <button 
+          <button
+            onClick={() => setGraphOpen(true)}
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+            title="Граф концепций"
+          >
+            <Network size={14} />
+            <span className="hidden sm:inline">Связи</span>
+          </button>
+
+          <button
+            onClick={() => setNotesOpen(true)}
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+            title="Ваши Заметки"
+          >
+            <PenTool size={14} />
+            <span className="hidden sm:inline">Заметки</span>
+          </button>
+
+          {/* P2P WebRTC Sync Status Button */}
+          <button
+            onClick={() => setSyncModalOpen(true)}
+            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-all cursor-pointer ${
+              !syncSettings?.enabled
+                ? 'bg-white/5 border-white/10 text-textDim hover:text-white'
+                : syncStatus === 'connected'
+                  ? 'border-accentEmerald/40 bg-accentEmerald/10 text-accentEmerald hover:bg-accentEmerald/20'
+                  : 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+            }`}
+            title={
+              !syncSettings?.enabled
+                ? 'P2P Синхронизация отключена (нажмите для настройки)'
+                : syncStatus === 'connected'
+                  ? `P2P синхронизация активна: подключено ${connectedPeers?.length || 0} устр.`
+                  : 'P2P: поиск устройств в комнате...'
+            }
+          >
+            {/* Status indicator dot */}
+            <div className={`w-2 h-2 rounded-full shrink-0 ${
+              !syncSettings?.enabled
+                ? 'bg-white/20'
+                : syncStatus === 'connected'
+                  ? 'bg-accentEmerald shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse'
+                  : 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)] animate-ping'
+            }`}></div>
+
+            <Radio size={14} className={syncStatus === 'connected' ? 'animate-pulse text-accentEmerald' : ''} />
+
+            <span className="hidden sm:inline">
+              {!syncSettings?.enabled
+                ? 'Синхр (выкл)'
+                : syncStatus === 'connected'
+                  ? `Синхр (${connectedPeers?.length || 0})`
+                  : 'Поиск пиров...'}
+            </span>
+          </button>
+
+          <button
             onClick={() => setSettingsOpen(true)}
             className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-colors cursor-pointer ${apiKey ? 'border-accentEmerald/30 bg-accentEmerald/10 text-accentEmerald hover:bg-accentEmerald/20' : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}
             title={apiKey ? 'OpenRouter API Key настроен' : 'Ключ API отсутствует'}
@@ -188,12 +285,12 @@ function App() {
             <span className="hidden md:inline">{apiKey ? 'API Active' : 'No API Key'}</span>
           </button>
 
-          <button 
-            onClick={() => setSettingsOpen(true)} 
+          <button
+            onClick={() => setSettingsOpen(true)}
             className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
             title="Настройки"
           >
-            <Settings size={14} /> 
+            <Settings size={14} />
             <span className="hidden sm:inline">Настройки</span>
           </button>
         </div>
@@ -272,9 +369,8 @@ function App() {
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 bg-bgSidebar/95 backdrop-blur-md border-t border-borderColor flex items-center justify-around px-2 z-30 safe-bottom">
         <button
           onClick={() => setMobileTab('sidebar')}
-          className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
-            mobileTab === 'sidebar' ? 'text-primaryGlow font-semibold' : 'text-textDim hover:text-textMain'
-          }`}
+          className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${mobileTab === 'sidebar' ? 'text-primaryGlow font-semibold' : 'text-textDim hover:text-textMain'
+            }`}
         >
           <List size={18} />
           <span className="text-[10px] mt-0.5">Главы</span>
@@ -282,9 +378,8 @@ function App() {
 
         <button
           onClick={() => setMobileTab('reader')}
-          className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${
-            mobileTab === 'reader' ? 'text-primaryGlow font-semibold' : 'text-textDim hover:text-textMain'
-          }`}
+          className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors ${mobileTab === 'reader' ? 'text-primaryGlow font-semibold' : 'text-textDim hover:text-textMain'
+            }`}
         >
           <BookOpenText size={18} />
           <span className="text-[10px] mt-0.5">Книга</span>
@@ -292,9 +387,8 @@ function App() {
 
         <button
           onClick={() => setMobileTab('ai')}
-          className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors relative ${
-            mobileTab === 'ai' ? 'text-primaryGlow font-semibold' : 'text-textDim hover:text-textMain'
-          }`}
+          className={`flex flex-col items-center justify-center flex-1 py-1 transition-colors relative ${mobileTab === 'ai' ? 'text-primaryGlow font-semibold' : 'text-textDim hover:text-textMain'
+            }`}
         >
           <div className="relative">
             <Sparkles size={18} />
@@ -307,6 +401,9 @@ function App() {
       {/* Modals */}
       <LibraryModal />
       <SettingsModal />
+      <NotesModal />
+      <ConceptGraphModal />
+      <SyncModal />
     </div>
   );
 }
