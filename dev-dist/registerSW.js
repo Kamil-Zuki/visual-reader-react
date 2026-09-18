@@ -1,1 +1,0 @@
-if('serviceWorker' in navigator) navigator.serviceWorker.register('/visual-reader-react/dev-sw.js?dev-sw', { scope: '/visual-reader-react/', type: 'classic' })

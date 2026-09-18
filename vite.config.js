@@ -2,8 +2,11 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Use '/' for Tauri (Android/desktop) builds, '/visual-reader-react/' for GitHub Pages
+const isTauri = !!process.env.TAURI_ENV
+
 export default defineConfig({
-  base: '/visual-reader-react/',
+  base: isTauri ? '/' : '/visual-reader-react/',
   plugins: [
     react(),
     VitePWA({
@@ -12,7 +15,8 @@ export default defineConfig({
         maximumFileSizeToCacheInBytes: 25 * 1024 * 1024
       },
       devOptions: {
-        enabled: true
+        // Keep disabled — enabling this generates dev-dist/sw.js which causes git conflicts
+        enabled: false
       },
       manifest: {
         name: 'Visual Reader',
