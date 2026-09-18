@@ -17,7 +17,7 @@ export default function DiagramModal({ isOpen, onClose, svgContent, title }) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
+    <div className="fixed inset-0 z-[150] flex items-center justify-center bg-black/85 backdrop-blur-md p-4">
       <div className="bg-bgSidebar border border-borderColor rounded-2xl w-full max-w-6xl h-[90vh] shadow-2xl flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-borderColor bg-bgSidebar shrink-0">
