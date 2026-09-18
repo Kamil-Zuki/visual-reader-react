@@ -1,38 +1,107 @@
-import React, { useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
-import { ChevronLeft, ChevronRight, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, CheckCircle2, Bookmark, PenTool } from 'lucide-react';
+
+const HIGHLIGHT_COLORS = [
+  { id: 'yellow', value: 'rgba(234, 179, 8, 0.4)' }, // bg-yellow-500/40
+  { id: 'green', value: 'rgba(34, 197, 94, 0.4)' },  // bg-green-500/40
+  { id: 'blue', value: 'rgba(59, 130, 246, 0.4)' },  // bg-blue-500/40
+  { id: 'purple', value: 'rgba(168, 85, 247, 0.4)' } // bg-purple-500/40
+];
 
 export default function Reader() {
-  const { currentBook, activeChapterIdx, activeSectionIdx, setActiveChapter, setMobileTab } = useStore();
+  const { currentBook, currentBookId, activeChapterIdx, activeSectionIdx, setActiveChapter, setMobileTab, readSections, markSectionAsRead, unmarkSectionAsRead, bookmarks, addBookmark, removeBookmark, highlights, addHighlight } = useStore();
   const contentRef = useRef(null);
-  const [hasSelection, setHasSelection] = React.useState(false);
+  const [selectionRange, setSelectionRange] = useState(null);
+  const [selectedText, setSelectedText] = useState('');
 
   const chapters = currentBook?.chapters || currentBook?.structure || [];
   const activeChapter = chapters[activeChapterIdx];
   const section = activeChapter?.sections?.[activeSectionIdx];
   const chapterTitle = activeChapter?.title;
+  const isRead = readSections[currentBookId]?.includes(section?.id);
+  const bookBookmarks = bookmarks[currentBookId] || [];
+  const isBookmarked = bookBookmarks.some(b => b.id === section?.id);
+  
+  const toggleReadStatus = () => {
+    if (!section?.id) return;
+    if (isRead) unmarkSectionAsRead(currentBookId, section.id);
+    else markSectionAsRead(currentBookId, section.id);
+  };
+
+  const toggleBookmark = () => {
+    if (!section?.id) return;
+    if (isBookmarked) {
+      removeBookmark(currentBookId, section.id);
+    } else {
+      addBookmark(currentBookId, {
+        id: section.id,
+        chapterIdx: activeChapterIdx,
+        sectionIdx: activeSectionIdx,
+        title: section.title || chapterTitle,
+        timestamp: Date.now()
+      });
+    }
+  };
 
   useEffect(() => {
     if (!currentBook) return;
     if (section && contentRef.current) {
-      contentRef.current.innerHTML = section.html;
+      let html = section.html;
+      
+      // Naive highlight restoration
+      const secHighlights = (highlights[currentBookId] || []).filter(h => h.chapterIdx === activeChapterIdx && h.sectionIdx === activeSectionIdx);
+      secHighlights.forEach(h => {
+         if (h.text && h.text.length > 5) {
+            // Simple replace. If text spans HTML elements, this will fail to match, which is an acceptable fallback for now.
+            html = html.replace(h.text, `<mark style="background-color: ${h.color}; color: white;" class="rounded px-1 leading-normal cursor-pointer" title="${h.note || 'Хайлайт'}">${h.text}</mark>`);
+         }
+      });
+      
+      contentRef.current.innerHTML = html;
       // Scroll to top when section changes
       if (contentRef.current.parentElement) {
         contentRef.current.parentElement.scrollTop = 0;
       }
     }
-  }, [currentBook, activeChapterIdx, activeSectionIdx, section]);
+  }, [currentBook, activeChapterIdx, activeSectionIdx, section, highlights, currentBookId]);
 
-  // Check selection for mobile quick action
+  // Check selection for floating toolbar
   useEffect(() => {
     const checkSel = () => {
       const sel = window.getSelection();
       const txt = sel?.toString().trim();
-      setHasSelection(Boolean(txt && txt.length > 5));
+      if (txt && txt.length > 5) {
+        setSelectedText(txt);
+        setSelectionRange(sel.getRangeAt(0).cloneRange());
+      } else {
+        setSelectedText('');
+        setSelectionRange(null);
+      }
     };
     document.addEventListener('selectionchange', checkSel);
     return () => document.removeEventListener('selectionchange', checkSel);
   }, []);
+
+  const handleHighlight = (colorValue) => {
+    if (!selectedText) return;
+    
+    // Save to store
+    addHighlight(currentBookId, {
+      id: Date.now().toString(),
+      chapterIdx: activeChapterIdx,
+      sectionIdx: activeSectionIdx,
+      text: selectedText,
+      color: colorValue,
+      note: '',
+      timestamp: Date.now()
+    });
+
+    // Deselect
+    window.getSelection().removeAllRanges();
+    setSelectedText('');
+    setSelectionRange(null);
+  };
 
   // Compute Prev / Next navigation
   const prevSectionInfo = (() => {
@@ -71,12 +140,41 @@ export default function Reader() {
   return (
     <main className="flex-1 bg-bgMain relative overflow-y-auto custom-scrollbar scroll-smooth p-4 sm:p-6 md:p-10 pb-20 md:pb-10">
       <div className="max-w-3xl mx-auto">
-        <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-primaryGlow">
-          {chapterTitle}
+        <div className="flex items-start justify-between gap-4 mb-6 sm:mb-8">
+          <div>
+            <div className="mb-2 text-xs font-semibold uppercase tracking-wider text-primaryGlow">
+              {chapterTitle}
+            </div>
+            <h1 className="text-2xl sm:text-3xl font-bold text-white leading-tight">
+              {section?.title || chapterTitle}
+            </h1>
+          </div>
+          {section?.id && (
+            <div className="flex gap-2">
+              <button 
+                onClick={toggleBookmark}
+                className={`shrink-0 flex items-center justify-center p-2 sm:px-3 sm:py-2 rounded-lg border transition-colors ${
+                  isBookmarked ? 'bg-primary/20 text-primaryGlow border-primary/30' : 'bg-bgSidebar text-textDim border-borderColor hover:text-white hover:bg-white/5'
+                }`}
+                title={isBookmarked ? 'Удалить закладку' : 'Добавить закладку'}
+              >
+                <Bookmark size={20} className={isBookmarked ? 'opacity-100 fill-primaryGlow' : 'opacity-50'} />
+              </button>
+              <button 
+                onClick={toggleReadStatus}
+                className={`shrink-0 flex items-center justify-center p-2 sm:px-3 sm:py-2 rounded-lg border transition-colors ${
+                  isRead ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-bgSidebar text-textDim border-borderColor hover:text-white hover:bg-white/5'
+                }`}
+                title={isRead ? 'Отметить как непрочитанное' : 'Отметить как прочитанное'}
+              >
+                <CheckCircle2 size={20} className={`sm:mr-2 ${isRead ? 'opacity-100' : 'opacity-50'}`} />
+                <span className="hidden sm:inline text-sm font-medium">
+                  {isRead ? 'Прочитано' : 'Отметить'}
+                </span>
+              </button>
+            </div>
+          )}
         </div>
-        <h1 className="text-2xl sm:text-3xl font-bold mb-6 sm:mb-8 text-white leading-tight">
-          {section?.title || chapterTitle}
-        </h1>
         
         <div 
           ref={contentRef}
@@ -113,15 +211,38 @@ export default function Reader() {
         </div>
       </div>
 
-      {/* Floating mobile prompt if text selected */}
-      {hasSelection && (
-        <div className="md:hidden fixed bottom-16 left-4 right-4 z-40 animate-bounce">
-          <button 
-            onClick={() => setMobileTab('ai')}
-            className="w-full py-2.5 px-4 rounded-xl bg-gradient-to-r from-primary to-accentPurple text-white text-xs font-semibold shadow-xl shadow-primary/30 flex items-center justify-center gap-2 border border-white/20"
-          >
-            <Sparkles size={16} /> Текст выделен! Открыть ИИ-инспектор
-          </button>
+      {/* Floating Action Bar for Selected Text */}
+      {selectedText && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-200">
+          <div className="bg-bgSidebar border border-borderColor shadow-2xl shadow-black rounded-2xl p-2 flex flex-col gap-2 w-[90vw] max-w-sm">
+            <div className="flex items-center justify-between px-2 pt-1 pb-2 border-b border-white/5">
+              <span className="text-xs text-textMuted font-medium">Действия с текстом</span>
+              <span className="text-[10px] text-textDim">{selectedText.length} симв.</span>
+            </div>
+            
+            <div className="flex items-center justify-around gap-2">
+              {HIGHLIGHT_COLORS.map(c => (
+                <button
+                  key={c.id}
+                  onClick={() => handleHighlight(c.value)}
+                  className="w-8 h-8 rounded-full border border-white/20 hover:scale-110 transition-transform flex items-center justify-center"
+                  style={{ backgroundColor: c.value.replace('0.4', '0.8') }}
+                  title={`Выделить цветом`}
+                >
+                  <PenTool size={14} className="text-white opacity-80" />
+                </button>
+              ))}
+              
+              <div className="w-px h-8 bg-white/10 mx-1"></div>
+              
+              <button 
+                onClick={() => setMobileTab('ai')}
+                className="flex-1 py-1.5 px-3 rounded-lg bg-gradient-to-r from-primary to-accentPurple text-white text-xs font-semibold shadow-lg shadow-primary/20 flex items-center justify-center gap-1.5 border border-white/20"
+              >
+                <Sparkles size={14} /> ИИ
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </main>

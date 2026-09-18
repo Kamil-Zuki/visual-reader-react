@@ -1,4 +1,5 @@
 import { create } from 'zustand';
+import { setStoreValue, getStoreValue } from '../utils/db';
 
 export const DEFAULT_PROMPTS = {
   diagram: `You are an expert visual communicator and diagram designer. Your job is to produce a clean, valid Mermaid.js diagram depicting the concept, process, workflow, or architecture in the provided text.
@@ -43,57 +44,39 @@ export const DEFAULT_CUSTOM_COMMANDS = [
   }
 ];
 
-const getSavedPrompts = () => {
-  try {
-    const saved = localStorage.getItem('ddia_custom_prompts');
-    return saved ? { ...DEFAULT_PROMPTS, ...JSON.parse(saved) } : DEFAULT_PROMPTS;
-  } catch {
-    return DEFAULT_PROMPTS;
-  }
-};
-
-const getSavedCommands = () => {
-  try {
-    const saved = localStorage.getItem('ddia_custom_commands');
-    return saved ? JSON.parse(saved) : DEFAULT_CUSTOM_COMMANDS;
-  } catch {
-    return DEFAULT_CUSTOM_COMMANDS;
-  }
-};
-
 export const useStore = create((set) => ({
-  apiKey: localStorage.getItem('openrouter_api_key') || '',
+  apiKey: '',
   setApiKey: (key) => {
-    localStorage.setItem('openrouter_api_key', key);
+    setStoreValue('openrouter_api_key', key);
     set({ apiKey: key });
   },
 
-  model: localStorage.getItem('openrouter_model') || 'openrouter/free',
+  model: 'openrouter/free',
   setModel: (model) => {
-    localStorage.setItem('openrouter_model', model);
+    setStoreValue('openrouter_model', model);
     set({ model });
   },
 
-  language: localStorage.getItem('ddia_language') || 'ru',
+  language: 'ru',
   setLanguage: (lang) => {
-    localStorage.setItem('ddia_language', lang);
+    setStoreValue('ddia_language', lang);
     set({ language: lang });
   },
 
-  prompts: getSavedPrompts(),
+  prompts: DEFAULT_PROMPTS,
   setPrompts: (newPrompts) => {
-    localStorage.setItem('ddia_custom_prompts', JSON.stringify(newPrompts));
+    setStoreValue('ddia_custom_prompts', newPrompts);
     set({ prompts: newPrompts });
   },
   resetPrompts: () => {
-    localStorage.setItem('ddia_custom_prompts', JSON.stringify(DEFAULT_PROMPTS));
+    setStoreValue('ddia_custom_prompts', DEFAULT_PROMPTS);
     set({ prompts: { ...DEFAULT_PROMPTS } });
   },
 
   currentBook: null,
-  currentBookId: localStorage.getItem('ddia_active_book_id') || 'default_ddia',
+  currentBookId: 'default_ddia',
   setCurrentBook: (book, id) => {
-    if (id) localStorage.setItem('ddia_active_book_id', id);
+    if (id) setStoreValue('ddia_active_book_id', id);
     set({ currentBook: book, currentBookId: id || 'default_ddia' });
   },
 
@@ -110,26 +93,79 @@ export const useStore = create((set) => ({
   aiResult: null,
   setAiResult: (result) => set({ aiResult: result }),
 
-  customCommands: getSavedCommands(),
+  customCommands: DEFAULT_CUSTOM_COMMANDS,
   addCustomCommand: (command) => set((state) => {
     const updated = [...state.customCommands, command];
-    localStorage.setItem('ddia_custom_commands', JSON.stringify(updated));
+    setStoreValue('ddia_custom_commands', updated);
     return { customCommands: updated };
   }),
   updateCustomCommand: (id, updatedFields) => set((state) => {
     const updated = state.customCommands.map(c => c.id === id ? { ...c, ...updatedFields } : c);
-    localStorage.setItem('ddia_custom_commands', JSON.stringify(updated));
+    setStoreValue('ddia_custom_commands', updated);
     return { customCommands: updated };
   }),
   deleteCustomCommand: (id) => set((state) => {
     const updated = state.customCommands.filter(c => c.id !== id);
-    localStorage.setItem('ddia_custom_commands', JSON.stringify(updated));
+    setStoreValue('ddia_custom_commands', updated);
     return { customCommands: updated };
   }),
   resetCustomCommands: () => {
-    localStorage.setItem('ddia_custom_commands', JSON.stringify(DEFAULT_CUSTOM_COMMANDS));
+    setStoreValue('ddia_custom_commands', DEFAULT_CUSTOM_COMMANDS);
     set({ customCommands: [...DEFAULT_CUSTOM_COMMANDS] });
   },
+
+  // --- Reading Progress (Per Book) ---
+  readSections: {},
+  markSectionAsRead: (bookId, sectionId) => set((state) => {
+    const bookRead = state.readSections[bookId] || [];
+    if (bookRead.includes(sectionId)) return state;
+    const updated = { ...state.readSections, [bookId]: [...bookRead, sectionId] };
+    setStoreValue('ddia_read_sections', updated);
+    return { readSections: updated };
+  }),
+  unmarkSectionAsRead: (bookId, sectionId) => set((state) => {
+    const bookRead = state.readSections[bookId] || [];
+    const updated = { ...state.readSections, [bookId]: bookRead.filter(id => id !== sectionId) };
+    setStoreValue('ddia_read_sections', updated);
+    return { readSections: updated };
+  }),
+
+  // --- Bookmarks (Per Book) ---
+  bookmarks: {},
+  addBookmark: (bookId, bookmark) => set((state) => {
+    const bookBookmarks = state.bookmarks[bookId] || [];
+    const updated = { ...state.bookmarks, [bookId]: [...bookBookmarks, bookmark] };
+    setStoreValue('ddia_bookmarks', updated);
+    return { bookmarks: updated };
+  }),
+  removeBookmark: (bookId, bookmarkId) => set((state) => {
+    const bookBookmarks = state.bookmarks[bookId] || [];
+    const updated = { ...state.bookmarks, [bookId]: bookBookmarks.filter(b => b.id !== bookmarkId) };
+    setStoreValue('ddia_bookmarks', updated);
+    return { bookmarks: updated };
+  }),
+
+  // --- Highlights (Per Book) ---
+  highlights: {},
+  addHighlight: (bookId, highlight) => set((state) => {
+    const bookHighlights = state.highlights[bookId] || [];
+    const updated = { ...state.highlights, [bookId]: [...bookHighlights, highlight] };
+    setStoreValue('ddia_highlights', updated);
+    return { highlights: updated };
+  }),
+  removeHighlight: (bookId, highlightId) => set((state) => {
+    const bookHighlights = state.highlights[bookId] || [];
+    const updated = { ...state.highlights, [bookId]: bookHighlights.filter(h => h.id !== highlightId) };
+    setStoreValue('ddia_highlights', updated);
+    return { highlights: updated };
+  }),
+  updateHighlightNote: (bookId, highlightId, note) => set((state) => {
+    const bookHighlights = state.highlights[bookId] || [];
+    const updatedList = bookHighlights.map(h => h.id === highlightId ? { ...h, note } : h);
+    const updated = { ...state.highlights, [bookId]: updatedList };
+    setStoreValue('ddia_highlights', updated);
+    return { highlights: updated };
+  }),
 
   isLibraryOpen: false,
   setLibraryOpen: (isOpen) => set({ isLibraryOpen: isOpen }),
@@ -137,55 +173,79 @@ export const useStore = create((set) => ({
   isSettingsOpen: false,
   setSettingsOpen: (isOpen) => set({ isSettingsOpen: isOpen }),
 
+  isNotesOpen: false,
+  setNotesOpen: (isOpen) => set({ isNotesOpen: isOpen }),
+
+  isGraphOpen: false,
+  setGraphOpen: (isOpen) => set({ isGraphOpen: isOpen }),
+
   // Desktop Panels Visibility & Widths
-  isSidebarOpen: localStorage.getItem('ddia_sidebar_open') !== 'false',
+  isSidebarOpen: true,
   toggleSidebar: () => set((state) => {
     const next = !state.isSidebarOpen;
-    localStorage.setItem('ddia_sidebar_open', String(next));
+    setStoreValue('ddia_sidebar_open', next);
     return { isSidebarOpen: next };
   }),
   setSidebarOpen: (isOpen) => {
-    localStorage.setItem('ddia_sidebar_open', String(isOpen));
+    setStoreValue('ddia_sidebar_open', isOpen);
     set({ isSidebarOpen: isOpen });
   },
 
-  isInspectorOpen: localStorage.getItem('ddia_inspector_open') !== 'false',
+  isInspectorOpen: true,
   toggleInspector: () => set((state) => {
     const next = !state.isInspectorOpen;
-    localStorage.setItem('ddia_inspector_open', String(next));
+    setStoreValue('ddia_inspector_open', next);
     return { isInspectorOpen: next };
   }),
   setInspectorOpen: (isOpen) => {
-    localStorage.setItem('ddia_inspector_open', String(isOpen));
+    setStoreValue('ddia_inspector_open', isOpen);
     set({ isInspectorOpen: isOpen });
   },
 
-  sidebarWidth: (() => {
-    try {
-      const saved = parseInt(localStorage.getItem('ddia_sidebar_width'), 10);
-      return !isNaN(saved) && saved >= 180 && saved <= 600 ? saved : 300;
-    } catch {
-      return 300;
-    }
-  })(),
+  sidebarWidth: 300,
   setSidebarWidth: (width) => {
     const clamped = Math.max(180, Math.min(600, width));
-    localStorage.setItem('ddia_sidebar_width', String(clamped));
+    setStoreValue('ddia_sidebar_width', clamped);
     set({ sidebarWidth: clamped });
   },
 
-  inspectorWidth: (() => {
-    try {
-      const saved = parseInt(localStorage.getItem('ddia_inspector_width'), 10);
-      return !isNaN(saved) && saved >= 280 && saved <= 750 ? saved : 420;
-    } catch {
-      return 420;
-    }
-  })(),
+  inspectorWidth: 420,
   setInspectorWidth: (width) => {
     const clamped = Math.max(280, Math.min(750, width));
-    localStorage.setItem('ddia_inspector_width', String(clamped));
+    setStoreValue('ddia_inspector_width', clamped);
     set({ inspectorWidth: clamped });
   },
 }));
 
+export async function initStoreFromDB() {
+  const [
+    apiKey, model, language, prompts, customCommands, activeBookId,
+    readSections, bookmarks, highlights,
+    sidebarOpen, inspectorOpen, sidebarWidth, inspectorWidth
+  ] = await Promise.all([
+    getStoreValue('openrouter_api_key', ''),
+    getStoreValue('openrouter_model', 'openrouter/free'),
+    getStoreValue('ddia_language', 'ru'),
+    getStoreValue('ddia_custom_prompts', DEFAULT_PROMPTS),
+    getStoreValue('ddia_custom_commands', DEFAULT_CUSTOM_COMMANDS),
+    getStoreValue('ddia_active_book_id', 'default_ddia'),
+    getStoreValue('ddia_read_sections', {}),
+    getStoreValue('ddia_bookmarks', {}),
+    getStoreValue('ddia_highlights', {}),
+    getStoreValue('ddia_sidebar_open', true),
+    getStoreValue('ddia_inspector_open', true),
+    getStoreValue('ddia_sidebar_width', 300),
+    getStoreValue('ddia_inspector_width', 420),
+  ]);
+
+  useStore.setState({
+    apiKey, model, language, 
+    prompts: { ...DEFAULT_PROMPTS, ...prompts },
+    customCommands, currentBookId: activeBookId,
+    readSections, bookmarks, highlights,
+    isSidebarOpen: sidebarOpen !== false && sidebarOpen !== 'false',
+    isInspectorOpen: inspectorOpen !== false && inspectorOpen !== 'false',
+    sidebarWidth: parseInt(sidebarWidth, 10) || 300,
+    inspectorWidth: parseInt(inspectorWidth, 10) || 420
+  });
+}

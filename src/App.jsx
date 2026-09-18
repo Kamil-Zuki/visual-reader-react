@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useStore } from './store/useStore';
+import { useStore, initStoreFromDB } from './store/useStore';
 import { openDB, getAllBooksFromDB, getBookByIdFromDB, saveBookToDB } from './utils/db';
 import { BOOK_DATA } from './data/book_data';
 import { 
@@ -12,8 +12,9 @@ import {
   Download,
   PanelLeft,
   PanelRight,
-  PanelLeftOpen,
-  PanelRightOpen
+  PanelRightOpen,
+  PenTool,
+  Network
 } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
@@ -21,12 +22,14 @@ import Reader from './components/Reader';
 import AIInspector from './components/AIInspector';
 import LibraryModal from './components/LibraryModal';
 import SettingsModal from './components/SettingsModal';
+import NotesModal from './components/NotesModal';
+import ConceptGraphModal from './components/ConceptGraphModal';
 import PanelResizer from './components/PanelResizer';
 
 function App() {
   const { 
     currentBook, setCurrentBook, currentBookId,
-    setLibraryOpen, setSettingsOpen, apiKey,
+    setLibraryOpen, setSettingsOpen, setNotesOpen, setGraphOpen, apiKey,
     mobileTab, setMobileTab,
     isSidebarOpen, toggleSidebar, setSidebarOpen, sidebarWidth, setSidebarWidth,
     isInspectorOpen, toggleInspector, setInspectorOpen, inspectorWidth, setInspectorWidth
@@ -87,6 +90,7 @@ function App() {
   useEffect(() => {
     const initApp = async () => {
       await openDB();
+      await initStoreFromDB();
       const books = await getAllBooksFromDB();
       
       const defaultBookData = {
@@ -177,6 +181,24 @@ function App() {
           >
             <Library size={14} /> 
             <span className="hidden sm:inline">Библиотека</span>
+          </button>
+
+          <button 
+            onClick={() => setGraphOpen(true)} 
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+            title="Граф концепций"
+          >
+            <Network size={14} /> 
+            <span className="hidden sm:inline">Связи</span>
+          </button>
+
+          <button 
+            onClick={() => setNotesOpen(true)} 
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+            title="Ваши Заметки"
+          >
+            <PenTool size={14} /> 
+            <span className="hidden sm:inline">Заметки</span>
           </button>
 
           <button 
@@ -307,6 +329,8 @@ function App() {
       {/* Modals */}
       <LibraryModal />
       <SettingsModal />
+      <NotesModal />
+      <ConceptGraphModal />
     </div>
   );
 }
