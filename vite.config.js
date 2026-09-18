@@ -2,11 +2,13 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
-// Use '/' for Tauri (Android/desktop) builds, '/visual-reader-react/' for GitHub Pages
-const isTauri = !!process.env.TAURI_ENV
+// Base path:
+// Default to '/' for Tauri (desktop/android) and local dev.
+// Only use '/visual-reader-react/' if GITHUB_PAGES env variable is explicitly set.
+const isGithubPages = process.env.GITHUB_PAGES === 'true'
 
 export default defineConfig({
-  base: isTauri ? '/' : '/visual-reader-react/',
+  base: isGithubPages ? '/visual-reader-react/' : '/',
   plugins: [
     react(),
     VitePWA({
