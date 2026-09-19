@@ -11,6 +11,32 @@
     <meta name="apple-mobile-web-app-title" content="Visual Reader" />
     <link rel="apple-touch-icon" href="/pwa-192x192.png" />
     <title>Visual Reader - Interactive Tech Books</title>
+    <script>
+      (function() {
+        var isTauri = typeof window !== 'undefined' && (
+          window.__TAURI_INTERNALS__ || 
+          window.__TAURI__ || 
+          window.location.hostname === 'tauri.localhost' || 
+          window.location.protocol === 'tauri:'
+        );
+        if (isTauri) {
+          if ('serviceWorker' in navigator) {
+            navigator.serviceWorker.getRegistrations().then(function(regs) {
+              for (var i = 0; i < regs.length; i++) {
+                regs[i].unregister();
+              }
+            });
+          }
+          if ('caches' in window) {
+            caches.keys().then(function(names) {
+              for (var j = 0; j < names.length; j++) {
+                caches.delete(names[j]);
+              }
+            });
+          }
+        }
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>
