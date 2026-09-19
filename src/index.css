@@ -26,6 +26,16 @@
   padding-top: max(0.5rem, env(safe-area-inset-top));
 }
 
+.mobile-safe-top {
+  padding-top: max(34px, env(safe-area-inset-top, 34px));
+}
+
+@media (min-width: 768px) {
+  .mobile-safe-top {
+    padding-top: 0px;
+  }
+}
+
 /* Custom Scrollbar */
 ::-webkit-scrollbar {
   width: 6px;

@@ -84,7 +84,7 @@ export default function SettingsModal() {
   if (!isSettingsOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/75 backdrop-blur-sm p-4 pt-[max(1rem,env(safe-area-inset-top,24px))] pb-[max(1rem,env(safe-area-inset-bottom,16px))] animate-fade-in">
       <div className="bg-bgSidebar border border-borderColor rounded-2xl w-full max-w-xl shadow-2xl p-6 relative flex flex-col gap-5 max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between border-b border-borderColor pb-3">

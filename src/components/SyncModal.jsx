@@ -7,7 +7,8 @@ import {
   forceSyncNow,
   testConnection,
   generateSyncKey,
-  getDefaultDeviceName
+  getDefaultDeviceName,
+  normalizeSupabaseUrl
 } from '../services/supabaseSyncService';
 import {
   X,
@@ -127,11 +128,12 @@ export default function SyncModal() {
     const nextState = !enabled;
     setEnabled(nextState);
 
-    const targetUrl = supabaseUrl.trim();
+    const targetUrl = normalizeSupabaseUrl(supabaseUrl);
     const targetKey = supabaseAnonKey.trim();
     const targetSyncKey = (syncKey || generateSyncKey()).trim();
     const targetDeviceName = (deviceName || getDefaultDeviceName()).trim();
 
+    setSupabaseUrl(targetUrl);
     setSyncKey(targetSyncKey);
     setDeviceName(targetDeviceName);
 
@@ -154,10 +156,12 @@ export default function SyncModal() {
   };
 
   const handleSaveAndApply = async () => {
-    const targetUrl = supabaseUrl.trim();
+    const targetUrl = normalizeSupabaseUrl(supabaseUrl);
     const targetKey = supabaseAnonKey.trim();
     const targetSyncKey = (syncKey || generateSyncKey()).trim();
     const targetDeviceName = (deviceName || getDefaultDeviceName()).trim();
+
+    setSupabaseUrl(targetUrl);
 
     const updated = {
       enabled,
@@ -179,7 +183,10 @@ export default function SyncModal() {
     setTestingConnection(true);
     setTestResult(null);
 
-    const res = await testConnection(supabaseUrl, supabaseAnonKey, syncKey);
+    const cleanUrl = normalizeSupabaseUrl(supabaseUrl);
+    setSupabaseUrl(cleanUrl);
+
+    const res = await testConnection(cleanUrl, supabaseAnonKey, syncKey);
     setTestResult(res);
     setTestingConnection(false);
   };
@@ -266,7 +273,7 @@ export default function SyncModal() {
   const statusInfo = getStatusDisplay();
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 pt-[max(1rem,env(safe-area-inset-top,24px))] pb-[max(1rem,env(safe-area-inset-bottom,16px))] animate-fade-in">
       <div className="bg-bgSidebar border border-borderColor rounded-2xl w-full max-w-xl shadow-2xl p-5 sm:p-6 relative flex flex-col gap-4 max-h-[92vh] overflow-y-auto custom-scrollbar">
         
         {/* Modal Header */}

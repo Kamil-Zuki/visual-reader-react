@@ -32,11 +32,35 @@ export function getDefaultDeviceName() {
 }
 
 /**
+ * Normalize and sanitize Supabase Project URL:
+ * - Strips accidental /rest/v1 suffixes (from Data API tab)
+ * - Converts dashboard URLs to standard API URLs
+ * - Trims whitespace and trailing slashes
+ */
+export function normalizeSupabaseUrl(inputUrl) {
+  if (!inputUrl) return '';
+  let url = inputUrl.trim().replace(/\/+$/, '');
+
+  const dashMatch = url.match(/supabase\.com\/dashboard\/project\/([a-z0-9]+)/i);
+  if (dashMatch) {
+    return `https://${dashMatch[1]}.supabase.co`;
+  }
+
+  url = url.replace(/\/rest(\/v1)?\/?$/i, '');
+
+  if (!url.startsWith('http://') && !url.startsWith('https://')) {
+    url = `https://${url}`;
+  }
+
+  return url;
+}
+
+/**
  * Initialize or get Supabase client instance
  */
 export function initSupabaseClient(url, anonKey) {
   if (!url || !anonKey) return null;
-  const cleanUrl = url.trim().replace(/\/+$/, '');
+  const cleanUrl = normalizeSupabaseUrl(url);
   const cleanKey = anonKey.trim();
 
   try {
@@ -44,7 +68,8 @@ export function initSupabaseClient(url, anonKey) {
       auth: {
         persistSession: false,
         autoRefreshToken: false,
-        detectSessionInUrl: false
+        detectSessionInUrl: false,
+        storageKey: 'vr_sync_auth'
       },
       realtime: {
         params: {
@@ -66,13 +91,13 @@ export async function testConnection(url, anonKey, syncKey) {
   if (!url || !anonKey) {
     return { success: false, error: 'Укажите URL проекта и Anon Key' };
   }
-  const cleanUrl = url.trim().replace(/\/+$/, '');
+  const cleanUrl = normalizeSupabaseUrl(url);
   const cleanKey = anonKey.trim();
   const testKey = (syncKey || 'test_probe').trim();
 
   try {
     const testClient = createClient(cleanUrl, cleanKey, {
-      auth: { persistSession: false, autoRefreshToken: false }
+      auth: { persistSession: false, autoRefreshToken: false, storageKey: 'vr_test_auth' }
     });
 
     const { error } = await testClient
@@ -350,10 +375,13 @@ export async function connectSync(settings) {
     return false;
   }
 
+  const cleanUrl = normalizeSupabaseUrl(supabaseUrl);
+  const cleanKey = supabaseAnonKey.trim();
+
   useStore.setState({ syncStatus: 'connecting' });
 
   try {
-    const client = initSupabaseClient(supabaseUrl, supabaseAnonKey);
+    const client = initSupabaseClient(cleanUrl, cleanKey);
     if (!client) {
       useStore.setState({ syncStatus: 'error' });
       return false;

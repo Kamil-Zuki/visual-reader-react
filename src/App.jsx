@@ -160,8 +160,8 @@ function App() {
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-bgMain">
-      {/* Header */}
-      <header className="h-14 bg-bgSidebar border-b border-borderColor flex items-center justify-between px-3 sm:px-4 shrink-0 z-30">
+      {/* Header with Android/Mobile Status Bar Safe Area Padding */}
+      <header className="mobile-safe-top bg-bgSidebar border-b border-borderColor flex items-center justify-between px-3 sm:px-4 shrink-0 z-30 h-auto md:h-14 pb-2.5 md:pb-0">
         <div className="flex items-center gap-2 sm:gap-3 overflow-hidden">
           {/* Sidebar toggle button on desktop */}
           <button
