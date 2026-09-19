@@ -158,6 +158,9 @@ export async function pushLocalData(syncKey) {
     bookmarks: state.bookmarks || {},
     highlights: state.highlights || {},
     readSections: state.readSections || {},
+    apiKey: state.apiKey || '',
+    model: state.model || 'openrouter/free',
+    language: state.language || 'ru',
     deviceName: state.syncSettings?.deviceName || getDefaultDeviceName(),
     clientTimestamp: Date.now()
   };
@@ -254,20 +257,43 @@ export async function mergeRemoteIntoLocal(remoteData) {
       mergedReadSections[bookId] = Array.from(new Set([...l, ...r]));
     }
 
-    // Persist to SQLite / IndexedDB
-    await Promise.all([
-      setStoreValue('ddia_bookmarks', mergedBookmarks),
-      setStoreValue('ddia_highlights', mergedHighlights),
-      setStoreValue('ddia_read_sections', mergedReadSections)
-    ]);
-
-    // Update Zustand store
-    useStore.setState({
+    // 4. Merge OpenRouter settings (apiKey, model, language)
+    const storeUpdates = {
       bookmarks: mergedBookmarks,
       highlights: mergedHighlights,
       readSections: mergedReadSections,
       lastSyncedAt: new Date().toISOString()
-    });
+    };
+
+    const dbPromises = [
+      setStoreValue('ddia_bookmarks', mergedBookmarks),
+      setStoreValue('ddia_highlights', mergedHighlights),
+      setStoreValue('ddia_read_sections', mergedReadSections)
+    ];
+
+    // If remote has an API key and local doesn't (or remote key is newer), sync it
+    if (remoteData.apiKey && remoteData.apiKey.trim()) {
+      if (!state.apiKey || remoteData.apiKey.trim() !== state.apiKey.trim()) {
+        storeUpdates.apiKey = remoteData.apiKey.trim();
+        dbPromises.push(setStoreValue('openrouter_api_key', remoteData.apiKey.trim()));
+      }
+    }
+
+    if (remoteData.model && remoteData.model !== state.model) {
+      storeUpdates.model = remoteData.model;
+      dbPromises.push(setStoreValue('openrouter_model', remoteData.model));
+    }
+
+    if (remoteData.language && remoteData.language !== state.language) {
+      storeUpdates.language = remoteData.language;
+      dbPromises.push(setStoreValue('ddia_language', remoteData.language));
+    }
+
+    // Persist to SQLite / IndexedDB
+    await Promise.all(dbPromises);
+
+    // Update Zustand store
+    useStore.setState(storeUpdates);
   } catch (err) {
     console.error('[SupabaseSync] Merge failed:', err);
   } finally {
@@ -337,6 +363,8 @@ function setupStoreAutoSync(syncKey) {
   let prevBookmarks = useStore.getState().bookmarks;
   let prevHighlights = useStore.getState().highlights;
   let prevReadSections = useStore.getState().readSections;
+  let prevApiKey = useStore.getState().apiKey;
+  let prevModel = useStore.getState().model;
 
   storeUnsubscribe = useStore.subscribe((state) => {
     if (isApplyingRemoteUpdate) return;
@@ -345,12 +373,16 @@ function setupStoreAutoSync(syncKey) {
     const bChanged = state.bookmarks !== prevBookmarks;
     const hChanged = state.highlights !== prevHighlights;
     const rChanged = state.readSections !== prevReadSections;
+    const kChanged = state.apiKey !== prevApiKey;
+    const mChanged = state.model !== prevModel;
 
     prevBookmarks = state.bookmarks;
     prevHighlights = state.highlights;
     prevReadSections = state.readSections;
+    prevApiKey = state.apiKey;
+    prevModel = state.model;
 
-    if (bChanged || hChanged || rChanged) {
+    if (bChanged || hChanged || rChanged || kChanged || mChanged) {
       if (debounceTimeout) clearTimeout(debounceTimeout);
 
       useStore.setState({ syncStatus: 'syncing' });

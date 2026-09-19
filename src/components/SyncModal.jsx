@@ -61,7 +61,8 @@ export default function SyncModal() {
     lastSyncedAt,
     bookmarks,
     highlights,
-    readSections
+    readSections,
+    apiKey
   } = useStore();
 
   const [enabled, setEnabled] = useState(syncSettings?.enabled || false);
@@ -548,10 +549,11 @@ export default function SyncModal() {
 
         {/* Local Sync Stats Footer */}
         <div className="pt-2 border-t border-borderColor flex items-center justify-between text-xs text-textMuted">
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-3 flex-wrap">
             <span>Закладок: <strong className="text-white">{totalBookmarks}</strong></span>
             <span>Выделений: <strong className="text-white">{totalHighlights}</strong></span>
             <span>Прочитано: <strong className="text-white">{totalRead}</strong></span>
+            <span>OpenRouter: <strong className={apiKey ? "text-accentEmerald" : "text-amber-400"}>{apiKey ? 'Подключен' : 'Не задан'}</strong></span>
           </div>
 
           <button
