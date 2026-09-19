@@ -95,52 +95,73 @@ export const useStore = create((set) => ({
 
   // --- Reading Progress (Per Book) ---
   readSections: {},
+  unmarkedSections: {},
   markSectionAsRead: (bookId, sectionId) => set((state) => {
     const bookRead = state.readSections[bookId] || [];
     if (bookRead.includes(sectionId)) return state;
     const updated = { ...state.readSections, [bookId]: [...bookRead, sectionId] };
+    const updatedUnmarked = { ...(state.unmarkedSections || {}) };
+    delete updatedUnmarked[`${bookId}__${sectionId}`];
     setStoreValue('ddia_read_sections', updated);
-    return { readSections: updated };
+    setStoreValue('ddia_unmarked_sections', updatedUnmarked);
+    return { readSections: updated, unmarkedSections: updatedUnmarked };
   }),
   unmarkSectionAsRead: (bookId, sectionId) => set((state) => {
     const bookRead = state.readSections[bookId] || [];
     const updated = { ...state.readSections, [bookId]: bookRead.filter(id => id !== sectionId) };
+    const updatedUnmarked = { ...(state.unmarkedSections || {}), [`${bookId}__${sectionId}`]: Date.now() };
     setStoreValue('ddia_read_sections', updated);
-    return { readSections: updated };
+    setStoreValue('ddia_unmarked_sections', updatedUnmarked);
+    return { readSections: updated, unmarkedSections: updatedUnmarked };
   }),
 
   // --- Bookmarks (Per Book) ---
   bookmarks: {},
+  deletedBookmarks: {},
   addBookmark: (bookId, bookmark) => set((state) => {
     const bookBookmarks = state.bookmarks[bookId] || [];
     const updated = { ...state.bookmarks, [bookId]: [...bookBookmarks, bookmark] };
+    const updatedDeleted = { ...(state.deletedBookmarks || {}) };
+    const bKey = bookmark.id || `${bookmark.chapterIdx}_${bookmark.sectionIdx}`;
+    delete updatedDeleted[bKey];
     setStoreValue('ddia_bookmarks', updated);
-    return { bookmarks: updated };
+    setStoreValue('ddia_deleted_bookmarks', updatedDeleted);
+    return { bookmarks: updated, deletedBookmarks: updatedDeleted };
   }),
   removeBookmark: (bookId, bookmarkId) => set((state) => {
     const bookBookmarks = state.bookmarks[bookId] || [];
-    const updated = { ...state.bookmarks, [bookId]: bookBookmarks.filter(b => b.id !== bookmarkId) };
+    const target = bookBookmarks.find(b => b.id === bookmarkId || `${b.chapterIdx}_${b.sectionIdx}` === bookmarkId);
+    const bKey = bookmarkId || (target ? `${target.chapterIdx}_${target.sectionIdx}` : bookmarkId);
+    const updated = { ...state.bookmarks, [bookId]: bookBookmarks.filter(b => b.id !== bookmarkId && `${b.chapterIdx}_${b.sectionIdx}` !== bookmarkId) };
+    const updatedDeleted = { ...(state.deletedBookmarks || {}), [bKey]: Date.now() };
     setStoreValue('ddia_bookmarks', updated);
-    return { bookmarks: updated };
+    setStoreValue('ddia_deleted_bookmarks', updatedDeleted);
+    return { bookmarks: updated, deletedBookmarks: updatedDeleted };
   }),
 
   // --- Highlights (Per Book) ---
   highlights: {},
+  deletedHighlights: {},
   addHighlight: (bookId, highlight) => set((state) => {
     const bookHighlights = state.highlights[bookId] || [];
     const updated = { ...state.highlights, [bookId]: [...bookHighlights, highlight] };
+    const updatedDeleted = { ...(state.deletedHighlights || {}) };
+    delete updatedDeleted[highlight.id];
     setStoreValue('ddia_highlights', updated);
-    return { highlights: updated };
+    setStoreValue('ddia_deleted_highlights', updatedDeleted);
+    return { highlights: updated, deletedHighlights: updatedDeleted };
   }),
   removeHighlight: (bookId, highlightId) => set((state) => {
     const bookHighlights = state.highlights[bookId] || [];
     const updated = { ...state.highlights, [bookId]: bookHighlights.filter(h => h.id !== highlightId) };
+    const updatedDeleted = { ...(state.deletedHighlights || {}), [highlightId]: Date.now() };
     setStoreValue('ddia_highlights', updated);
-    return { highlights: updated };
+    setStoreValue('ddia_deleted_highlights', updatedDeleted);
+    return { highlights: updated, deletedHighlights: updatedDeleted };
   }),
   updateHighlightNote: (bookId, highlightId, note) => set((state) => {
     const bookHighlights = state.highlights[bookId] || [];
-    const updatedList = bookHighlights.map(h => h.id === highlightId ? { ...h, note } : h);
+    const updatedList = bookHighlights.map(h => h.id === highlightId ? { ...h, note, updatedAt: Date.now() } : h);
     const updated = { ...state.highlights, [bookId]: updatedList };
     setStoreValue('ddia_highlights', updated);
     return { highlights: updated };
@@ -219,6 +240,7 @@ export async function initStoreFromDB() {
   const [
     apiKey, model, language, promptsData, activeBookId,
     readSections, bookmarks, highlights,
+    deletedHighlights, deletedBookmarks, unmarkedSections,
     sidebarOpen, inspectorOpen, sidebarWidth, inspectorWidth,
     supabaseSyncSettings, p2pSyncSettings
   ] = await Promise.all([
@@ -230,6 +252,9 @@ export async function initStoreFromDB() {
     getStoreValue('ddia_read_sections', {}),
     getStoreValue('ddia_bookmarks', {}),
     getStoreValue('ddia_highlights', {}),
+    getStoreValue('ddia_deleted_highlights', {}),
+    getStoreValue('ddia_deleted_bookmarks', {}),
+    getStoreValue('ddia_unmarked_sections', {}),
     getStoreValue('ddia_sidebar_open', true),
     getStoreValue('ddia_inspector_open', true),
     getStoreValue('ddia_sidebar_width', 300),
@@ -264,6 +289,9 @@ export async function initStoreFromDB() {
     customCommands: promptsData?.customCommands || [],
     currentBookId: activeBookId,
     readSections, bookmarks, highlights,
+    deletedHighlights: deletedHighlights || {},
+    deletedBookmarks: deletedBookmarks || {},
+    unmarkedSections: unmarkedSections || {},
     isSidebarOpen: sidebarOpen !== false && sidebarOpen !== 'false',
     isInspectorOpen: inspectorOpen !== false && inspectorOpen !== 'false',
     sidebarWidth: parseInt(sidebarWidth, 10) || 300,

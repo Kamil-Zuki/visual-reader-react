@@ -158,6 +158,9 @@ export async function pushLocalData(syncKey) {
     bookmarks: state.bookmarks || {},
     highlights: state.highlights || {},
     readSections: state.readSections || {},
+    deletedHighlights: state.deletedHighlights || {},
+    deletedBookmarks: state.deletedBookmarks || {},
+    unmarkedSections: state.unmarkedSections || {},
     apiKey: state.apiKey || '',
     model: state.model || 'openrouter/free',
     language: state.language || 'ru',
@@ -205,8 +208,30 @@ export async function mergeRemoteIntoLocal(remoteData) {
     const remoteHighlights = remoteData.highlights || {};
     const remoteReadSections = remoteData.readSections || {};
 
-    // 1. Merge bookmarks (union by id or fallback key)
-    const mergedBookmarks = { ...localBookmarks };
+    // Merge tombstones (union max timestamps)
+    const localDeletedH = state.deletedHighlights || {};
+    const remoteDeletedH = remoteData.deletedHighlights || {};
+    const mergedDeletedH = { ...localDeletedH };
+    for (const [k, v] of Object.entries(remoteDeletedH)) {
+      mergedDeletedH[k] = Math.max(mergedDeletedH[k] || 0, v || 0);
+    }
+
+    const localDeletedB = state.deletedBookmarks || {};
+    const remoteDeletedB = remoteData.deletedBookmarks || {};
+    const mergedDeletedB = { ...localDeletedB };
+    for (const [k, v] of Object.entries(remoteDeletedB)) {
+      mergedDeletedB[k] = Math.max(mergedDeletedB[k] || 0, v || 0);
+    }
+
+    const localUnmarked = state.unmarkedSections || {};
+    const remoteUnmarked = remoteData.unmarkedSections || {};
+    const mergedUnmarked = { ...localUnmarked };
+    for (const [k, v] of Object.entries(remoteUnmarked)) {
+      mergedUnmarked[k] = Math.max(mergedUnmarked[k] || 0, v || 0);
+    }
+
+    // 1. Merge bookmarks (union by id, exclude if deleted)
+    const mergedBookmarks = {};
     const allBookmarkBooks = new Set([...Object.keys(localBookmarks), ...Object.keys(remoteBookmarks)]);
     for (const bookId of allBookmarkBooks) {
       const localList = localBookmarks[bookId] || [];
@@ -214,47 +239,68 @@ export async function mergeRemoteIntoLocal(remoteData) {
       const bMap = new Map();
       localList.forEach(b => {
         const key = b.id || `${b.chapterIdx}_${b.sectionIdx}`;
-        bMap.set(key, b);
+        const delTime = mergedDeletedB[key] || (b.id ? mergedDeletedB[b.id] : 0) || 0;
+        const bTime = b.createdAt || b.timestamp || 0;
+        if (!delTime || bTime > delTime) {
+          bMap.set(key, b);
+        }
       });
       remoteList.forEach(b => {
         const key = b.id || `${b.chapterIdx}_${b.sectionIdx}`;
-        if (!bMap.has(key)) {
-          bMap.set(key, b);
+        const delTime = mergedDeletedB[key] || (b.id ? mergedDeletedB[b.id] : 0) || 0;
+        const bTime = b.createdAt || b.timestamp || 0;
+        if (!delTime || bTime > delTime) {
+          if (!bMap.has(key)) {
+            bMap.set(key, b);
+          }
         }
       });
       mergedBookmarks[bookId] = Array.from(bMap.values());
     }
 
-    // 2. Merge highlights (union by id, preserve newest note)
-    const mergedHighlights = { ...localHighlights };
+    // 2. Merge highlights (union by id, exclude if deleted by tombstone)
+    const mergedHighlights = {};
     const allHighlightBooks = new Set([...Object.keys(localHighlights), ...Object.keys(remoteHighlights)]);
     for (const bookId of allHighlightBooks) {
       const localList = localHighlights[bookId] || [];
       const remoteList = remoteHighlights[bookId] || [];
       const hMap = new Map();
-      localList.forEach(h => hMap.set(h.id, h));
-      remoteList.forEach(h => {
-        if (!hMap.has(h.id)) {
+      localList.forEach(h => {
+        const delTime = mergedDeletedH[h.id] || 0;
+        const hTime = h.updatedAt || h.timestamp || h.createdAt || 0;
+        if (!delTime || hTime > delTime) {
           hMap.set(h.id, h);
-        } else {
-          const existing = hMap.get(h.id);
-          const existingTime = existing.updatedAt || existing.createdAt || 0;
-          const remoteTime = h.updatedAt || h.createdAt || 0;
-          if (remoteTime > existingTime || (!existing.note && h.note)) {
-            hMap.set(h.id, { ...existing, ...h });
+        }
+      });
+      remoteList.forEach(h => {
+        const delTime = mergedDeletedH[h.id] || 0;
+        const hTime = h.updatedAt || h.timestamp || h.createdAt || 0;
+        if (!delTime || hTime > delTime) {
+          if (!hMap.has(h.id)) {
+            hMap.set(h.id, h);
+          } else {
+            const existing = hMap.get(h.id);
+            const existingTime = existing.updatedAt || existing.timestamp || existing.createdAt || 0;
+            if (hTime > existingTime || (!existing.note && h.note)) {
+              hMap.set(h.id, { ...existing, ...h });
+            }
           }
         }
       });
       mergedHighlights[bookId] = Array.from(hMap.values());
     }
 
-    // 3. Merge readSections (union Set per book)
-    const mergedReadSections = { ...localReadSections };
+    // 3. Merge readSections (union Set per book, exclude unmarked)
+    const mergedReadSections = {};
     const allReadBooks = new Set([...Object.keys(localReadSections), ...Object.keys(remoteReadSections)]);
     for (const bookId of allReadBooks) {
       const l = localReadSections[bookId] || [];
       const r = remoteReadSections[bookId] || [];
-      mergedReadSections[bookId] = Array.from(new Set([...l, ...r]));
+      const combined = Array.from(new Set([...l, ...r]));
+      mergedReadSections[bookId] = combined.filter(sectionId => {
+        const unmarkKey = `${bookId}__${sectionId}`;
+        return !mergedUnmarked[unmarkKey];
+      });
     }
 
     // 4. Merge OpenRouter settings (apiKey, model, language)
@@ -262,13 +308,19 @@ export async function mergeRemoteIntoLocal(remoteData) {
       bookmarks: mergedBookmarks,
       highlights: mergedHighlights,
       readSections: mergedReadSections,
+      deletedHighlights: mergedDeletedH,
+      deletedBookmarks: mergedDeletedB,
+      unmarkedSections: mergedUnmarked,
       lastSyncedAt: new Date().toISOString()
     };
 
     const dbPromises = [
       setStoreValue('ddia_bookmarks', mergedBookmarks),
       setStoreValue('ddia_highlights', mergedHighlights),
-      setStoreValue('ddia_read_sections', mergedReadSections)
+      setStoreValue('ddia_read_sections', mergedReadSections),
+      setStoreValue('ddia_deleted_highlights', mergedDeletedH),
+      setStoreValue('ddia_deleted_bookmarks', mergedDeletedB),
+      setStoreValue('ddia_unmarked_sections', mergedUnmarked)
     ];
 
     // If remote has an API key and local doesn't (or remote key is newer), sync it
@@ -363,6 +415,9 @@ function setupStoreAutoSync(syncKey) {
   let prevBookmarks = useStore.getState().bookmarks;
   let prevHighlights = useStore.getState().highlights;
   let prevReadSections = useStore.getState().readSections;
+  let prevDeletedH = useStore.getState().deletedHighlights;
+  let prevDeletedB = useStore.getState().deletedBookmarks;
+  let prevUnmarked = useStore.getState().unmarkedSections;
   let prevApiKey = useStore.getState().apiKey;
   let prevModel = useStore.getState().model;
 
@@ -373,16 +428,22 @@ function setupStoreAutoSync(syncKey) {
     const bChanged = state.bookmarks !== prevBookmarks;
     const hChanged = state.highlights !== prevHighlights;
     const rChanged = state.readSections !== prevReadSections;
+    const dhChanged = state.deletedHighlights !== prevDeletedH;
+    const dbChanged = state.deletedBookmarks !== prevDeletedB;
+    const unChanged = state.unmarkedSections !== prevUnmarked;
     const kChanged = state.apiKey !== prevApiKey;
     const mChanged = state.model !== prevModel;
 
     prevBookmarks = state.bookmarks;
     prevHighlights = state.highlights;
     prevReadSections = state.readSections;
+    prevDeletedH = state.deletedHighlights;
+    prevDeletedB = state.deletedBookmarks;
+    prevUnmarked = state.unmarkedSections;
     prevApiKey = state.apiKey;
     prevModel = state.model;
 
-    if (bChanged || hChanged || rChanged || kChanged || mChanged) {
+    if (bChanged || hChanged || rChanged || dhChanged || dbChanged || unChanged || kChanged || mChanged) {
       if (debounceTimeout) clearTimeout(debounceTimeout);
 
       useStore.setState({ syncStatus: 'syncing' });
