@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { useStore, DEFAULT_PROMPTS } from '../store/useStore';
+import { useStore } from '../store/useStore';
 import { Lightbulb, Network, FileText, Maximize2, Trash2, Loader2, Sparkles, Plus, Edit2, PanelRightClose } from 'lucide-react';
 import mermaid from 'mermaid';
 import DiagramModal from './DiagramModal';
@@ -113,7 +113,7 @@ export default function AIInspector() {
 
     if (customCmd) {
       if (isDiagram) {
-        const baseDiagramPrompt = prompts?.diagram || DEFAULT_PROMPTS.diagram;
+        const baseDiagramPrompt = prompts?.diagram || '';
         systemPrompt = `${baseDiagramPrompt}\n\nTask: ${customCmd.prompt}\nLanguage note: Node labels and text inside the diagram should be in ${targetLang} unless specified otherwise in the task.`;
         userPrompt = `Generate a Mermaid diagram for this excerpt:\n\n"${selectedText}"`;
       } else {
@@ -121,7 +121,7 @@ export default function AIInspector() {
         userPrompt = `Text excerpt:\n\n"${selectedText}"`;
       }
     } else {
-      const basePrompt = prompts?.[type] || DEFAULT_PROMPTS[type];
+      const basePrompt = prompts?.[type] || '';
       if (type === 'diagram') {
         systemPrompt = `${basePrompt}\nLanguage note: Node labels and text inside the diagram should be in ${targetLang} unless specified otherwise.`;
         userPrompt = `Generate a Mermaid diagram for this excerpt:\n\n"${selectedText}"`;

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { useStore, DEFAULT_PROMPTS } from '../store/useStore';
-import { X, Key, Cpu, Sparkles, Globe, MessageSquareCode, RotateCcw, Check, Plus, Edit2, Trash2, Radio } from 'lucide-react';
+import { useStore } from '../store/useStore';
+import { X, Key, Cpu, Sparkles, Globe, MessageSquareCode, RotateCcw, Check, Plus, Edit2, Trash2, Cloud } from 'lucide-react';
 import CommandModal from './CommandModal';
 
 export default function SettingsModal() {
@@ -11,7 +11,7 @@ export default function SettingsModal() {
     language, setLanguage,
     prompts, setPrompts, resetPrompts,
     customCommands, addCustomCommand, updateCustomCommand, deleteCustomCommand, resetCustomCommands,
-    setSyncModalOpen, syncStatus, syncSettings, connectedPeers
+    setSyncModalOpen, syncStatus, syncSettings
   } = useStore();
   
   const [activeTab, setActiveTab] = useState('general'); // 'general' | 'prompts'
@@ -68,16 +68,16 @@ export default function SettingsModal() {
     }, 400);
   };
 
-  const handleResetPrompts = () => {
-    if (window.confirm('Сбросить стандартные промпты к начальным настройкам?')) {
-      resetPrompts();
-      setLocalPrompts({ ...DEFAULT_PROMPTS });
+  const handleResetPrompts = async () => {
+    if (window.confirm('Сбросить стандартные промпты к начальным настройкам из базы данных?')) {
+      const reset = await resetPrompts();
+      if (reset) setLocalPrompts({ ...reset });
     }
   };
 
-  const handleResetCommands = () => {
-    if (window.confirm('Сбросить пользовательские команды к начальному списку?')) {
-      resetCustomCommands();
+  const handleResetCommands = async () => {
+    if (window.confirm('Сбросить пользовательские команды к начальному списку из базы данных?')) {
+      await resetCustomCommands();
     }
   };
 
@@ -209,25 +209,33 @@ export default function SettingsModal() {
               </span>
             </div>
 
-            {/* P2P Sync shortcut */}
+            {/* Supabase Cloud Sync shortcut */}
             <div className="p-3 bg-white/[0.02] border border-borderColor rounded-xl flex items-center justify-between mt-1">
               <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-lg bg-indigo-500/20 text-indigo-400 flex items-center justify-center border border-indigo-500/30">
-                  <Radio size={16} />
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/20 text-emerald-400 flex items-center justify-center border border-emerald-500/30">
+                  <Cloud size={16} />
                 </div>
                 <div>
                   <div className="text-xs font-semibold text-white flex items-center gap-2">
-                    P2P Синхронизация (WebRTC)
+                    Облачная синхронизация (Supabase)
                     <span className={`w-2 h-2 rounded-full ${
                       syncSettings?.enabled 
-                        ? (syncStatus === 'connected' ? 'bg-accentEmerald' : 'bg-amber-400') 
+                        ? (syncStatus === 'synced' ? 'bg-accentEmerald' : syncStatus === 'error' ? 'bg-red-400' : 'bg-amber-400') 
                         : 'bg-textMuted/40'
                     }`}></span>
                   </div>
                   <div className="text-[11px] text-textMuted">
-                    {syncSettings?.enabled 
-                      ? (syncStatus === 'connected' ? `Активно (${connectedPeers?.length || 0} устр.)` : 'Поиск устройств...') 
-                      : 'Выключена'}
+                    {!syncSettings?.enabled 
+                      ? 'Выключена' 
+                      : syncStatus === 'synced'
+                        ? 'Синхронизировано'
+                        : syncStatus === 'syncing'
+                          ? 'Обновление данных...'
+                          : syncStatus === 'connecting'
+                            ? 'Подключение...'
+                            : syncStatus === 'error'
+                              ? 'Ошибка подключения'
+                              : 'Готово к работе'}
                   </div>
                 </div>
               </div>
@@ -239,7 +247,7 @@ export default function SettingsModal() {
                 }}
                 className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 text-xs font-medium text-white border border-white/10 transition-colors cursor-pointer"
               >
-                Настроить P2P
+                Настроить Supabase
               </button>
             </div>
           </div>

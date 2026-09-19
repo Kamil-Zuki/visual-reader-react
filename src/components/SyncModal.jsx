@@ -1,39 +1,61 @@
 import React, { useState, useEffect, useRef } from 'react';
 import QRCode from 'qrcode';
 import { useStore } from '../store/useStore';
-import { 
-  connectSync, 
-  disconnectSync, 
-  generateRoomId, 
-  generatePassword, 
-  getDefaultDeviceName,
-  forcePushLocalToDoc 
-} from '../services/syncService';
-import { 
-  X, 
-  Radio, 
-  Wifi, 
-  WifiOff, 
-  Lock, 
-  Eye, 
-  EyeOff, 
-  Copy, 
-  Check, 
-  RefreshCw, 
-  Smartphone, 
-  Laptop, 
-  ShieldCheck, 
-  Share2, 
-  Sparkles 
+import {
+  connectSync,
+  disconnectSync,
+  forceSyncNow,
+  testConnection,
+  generateSyncKey,
+  getDefaultDeviceName
+} from '../services/supabaseSyncService';
+import {
+  X,
+  Cloud,
+  CloudOff,
+  CloudRain,
+  RefreshCw,
+  Copy,
+  Check,
+  Key,
+  ShieldCheck,
+  Sparkles,
+  Eye,
+  EyeOff,
+  Database,
+  Code,
+  CheckCircle2,
+  AlertCircle,
+  Smartphone,
+  Share2,
+  ChevronDown,
+  ChevronUp
 } from 'lucide-react';
 
+const SQL_SETUP_SCRIPT = `-- 1. Таблица для хранения синхронизируемых данных
+CREATE TABLE IF NOT EXISTS reader_sync (
+  sync_key TEXT PRIMARY KEY,
+  data JSONB NOT NULL DEFAULT '{}'::jsonb,
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+);
+
+-- 2. Включаем Row Level Security
+ALTER TABLE reader_sync ENABLE ROW LEVEL SECURITY;
+
+-- 3. Политика доступа по ключу синхронизации
+CREATE POLICY "Allow public access by sync_key" 
+ON reader_sync FOR ALL TO anon, authenticated 
+USING (true) WITH CHECK (true);
+
+-- 4. Включаем Realtime для таблицы
+ALTER PUBLICATION supabase_realtime ADD TABLE reader_sync;`;
+
 export default function SyncModal() {
-  const { 
-    isSyncModalOpen, 
-    setSyncModalOpen, 
-    syncStatus, 
-    connectedPeers, 
-    syncSettings, 
+  const {
+    isSyncModalOpen,
+    setSyncModalOpen,
+    syncStatus,
+    syncSettings,
     setSyncSettings,
     lastSyncedAt,
     bookmarks,
@@ -41,53 +63,59 @@ export default function SyncModal() {
     readSections
   } = useStore();
 
-  const [enabled, setEnabled] = useState(syncSettings.enabled || false);
-  const [roomId, setRoomId] = useState(syncSettings.roomId || '');
-  const [password, setPassword] = useState(syncSettings.password || '');
-  const [deviceName, setDeviceName] = useState(syncSettings.deviceName || '');
-  const [showPassword, setShowPassword] = useState(false);
-  const [copiedCode, setCopiedCode] = useState(false);
+  const [enabled, setEnabled] = useState(syncSettings?.enabled || false);
+  const [supabaseUrl, setSupabaseUrl] = useState(syncSettings?.supabaseUrl || '');
+  const [supabaseAnonKey, setSupabaseAnonKey] = useState(syncSettings?.supabaseAnonKey || '');
+  const [syncKey, setSyncKey] = useState(syncSettings?.syncKey || '');
+  const [deviceName, setDeviceName] = useState(syncSettings?.deviceName || '');
+
+  const [showAnonKey, setShowAnonKey] = useState(false);
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [testResult, setTestResult] = useState(null);
+  const [copiedKey, setCopiedKey] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedSql, setCopiedSql] = useState(false);
   const [syncedJustNow, setSyncedJustNow] = useState(false);
+  const [showSqlHelper, setShowSqlHelper] = useState(false);
+
   const qrCanvasRef = useRef(null);
 
-  // Initialize form fields when modal opens
+  // Initialize fields on modal open
   useEffect(() => {
     if (isSyncModalOpen) {
-      setEnabled(syncSettings.enabled || false);
-      setRoomId(syncSettings.roomId || generateRoomId());
-      setPassword(syncSettings.password || '');
-      setDeviceName(syncSettings.deviceName || getDefaultDeviceName());
+      setEnabled(syncSettings?.enabled || false);
+      setSupabaseUrl(syncSettings?.supabaseUrl || '');
+      setSupabaseAnonKey(syncSettings?.supabaseAnonKey || '');
+      setSyncKey(syncSettings?.syncKey || generateSyncKey());
+      setDeviceName(syncSettings?.deviceName || getDefaultDeviceName());
+      setTestResult(null);
     }
   }, [isSyncModalOpen, syncSettings]);
 
-  // Generate QR Code when Room ID or Password changes
+  // Generate QR Code containing sync_key link
   useEffect(() => {
-    if (!isSyncModalOpen || !qrCanvasRef.current || !roomId) return;
+    if (!isSyncModalOpen || !qrCanvasRef.current || !syncKey) return;
 
     let syncUrl = '';
     try {
       const origin = window.location.origin;
       const pathname = window.location.pathname;
-      const params = new URLSearchParams();
-      params.set('sync_room', roomId);
-      if (password) params.set('sync_pass', password);
-      syncUrl = `${origin}${pathname}#${params.toString()}`;
+      syncUrl = `${origin}${pathname}#sync_key=${encodeURIComponent(syncKey.trim())}`;
     } catch {
-      syncUrl = `vr-sync:${roomId}:${password || ''}`;
+      syncUrl = `vr-sync:${syncKey.trim()}`;
     }
 
     QRCode.toCanvas(qrCanvasRef.current, syncUrl, {
-      width: 140,
+      width: 130,
       margin: 1,
       color: {
         dark: '#0f172a',
         light: '#ffffff'
       }
     }, (err) => {
-      if (err) console.error('[Sync] QR Code generation error:', err);
+      if (err) console.error('[Sync] QR Code render error:', err);
     });
-  }, [isSyncModalOpen, roomId, password]);
+  }, [isSyncModalOpen, syncKey]);
 
   if (!isSyncModalOpen) return null;
 
@@ -95,89 +123,147 @@ export default function SyncModal() {
   const totalHighlights = Object.values(highlights || {}).reduce((acc, list) => acc + (list?.length || 0), 0);
   const totalRead = Object.values(readSections || {}).reduce((acc, list) => acc + (list?.length || 0), 0);
 
-  const handleToggleSync = () => {
+  const handleToggleSync = async () => {
     const nextState = !enabled;
     setEnabled(nextState);
 
-    const targetRoomId = (roomId || generateRoomId()).trim();
-    const targetPassword = password.trim();
+    const targetUrl = supabaseUrl.trim();
+    const targetKey = supabaseAnonKey.trim();
+    const targetSyncKey = (syncKey || generateSyncKey()).trim();
     const targetDeviceName = (deviceName || getDefaultDeviceName()).trim();
 
-    setRoomId(targetRoomId);
+    setSyncKey(targetSyncKey);
     setDeviceName(targetDeviceName);
 
     const updated = {
       enabled: nextState,
-      roomId: targetRoomId,
-      password: targetPassword,
+      supabaseUrl: targetUrl,
+      supabaseAnonKey: targetKey,
+      syncKey: targetSyncKey,
       deviceName: targetDeviceName
     };
     setSyncSettings(updated);
 
     if (nextState) {
-      connectSync(updated);
+      if (targetUrl && targetKey && targetSyncKey) {
+        await connectSync(updated);
+      }
     } else {
       disconnectSync();
     }
   };
 
-  const handleApplySettings = () => {
-    const targetRoomId = (roomId || generateRoomId()).trim();
-    const targetPassword = password.trim();
+  const handleSaveAndApply = async () => {
+    const targetUrl = supabaseUrl.trim();
+    const targetKey = supabaseAnonKey.trim();
+    const targetSyncKey = (syncKey || generateSyncKey()).trim();
     const targetDeviceName = (deviceName || getDefaultDeviceName()).trim();
 
     const updated = {
       enabled,
-      roomId: targetRoomId,
-      password: targetPassword,
+      supabaseUrl: targetUrl,
+      supabaseAnonKey: targetKey,
+      syncKey: targetSyncKey,
       deviceName: targetDeviceName
     };
     setSyncSettings(updated);
 
-    if (enabled) {
-      connectSync(updated);
-    } else {
+    if (enabled && targetUrl && targetKey && targetSyncKey) {
+      await connectSync(updated);
+    } else if (!enabled) {
       disconnectSync();
     }
   };
 
-  const handleGenerateNewRoom = () => {
-    const newRoom = generateRoomId();
-    setRoomId(newRoom);
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setTestResult(null);
+
+    const res = await testConnection(supabaseUrl, supabaseAnonKey, syncKey);
+    setTestResult(res);
+    setTestingConnection(false);
   };
 
-  const handleGenerateNewPassword = () => {
-    const newPass = generatePassword();
-    setPassword(newPass);
+  const handleManualSync = async () => {
+    setSyncedJustNow(true);
+    await forceSyncNow();
+    setTimeout(() => setSyncedJustNow(false), 2000);
   };
 
-  const handleCopyCode = () => {
-    navigator.clipboard.writeText(roomId);
-    setCopiedCode(true);
-    setTimeout(() => setCopiedCode(false), 2000);
+  const handleCopySyncKey = () => {
+    navigator.clipboard.writeText(syncKey);
+    setCopiedKey(true);
+    setTimeout(() => setCopiedKey(false), 2000);
   };
 
-  const handleCopyShareLink = () => {
+  const handleCopyLink = () => {
     try {
       const origin = window.location.origin;
       const pathname = window.location.pathname;
-      const params = new URLSearchParams();
-      params.set('sync_room', roomId);
-      if (password) params.set('sync_pass', password);
-      const url = `${origin}${pathname}#${params.toString()}`;
+      const url = `${origin}${pathname}#sync_key=${encodeURIComponent(syncKey.trim())}`;
       navigator.clipboard.writeText(url);
       setCopiedLink(true);
       setTimeout(() => setCopiedLink(false), 2000);
     } catch {
-      handleCopyCode();
+      handleCopySyncKey();
     }
   };
 
-  const handleManualSync = () => {
-    forcePushLocalToDoc();
-    setSyncedJustNow(true);
-    setTimeout(() => setSyncedJustNow(false), 2000);
+  const handleCopySql = () => {
+    navigator.clipboard.writeText(SQL_SETUP_SCRIPT);
+    setCopiedSql(true);
+    setTimeout(() => setCopiedSql(false), 2000);
   };
+
+  const getStatusDisplay = () => {
+    if (!enabled) {
+      return {
+        badge: 'Синхронизация выключена',
+        dotClass: 'bg-textMuted/40',
+        bgClass: 'bg-white/[0.02] border-white/10',
+        icon: <CloudOff size={16} className="text-textMuted" />
+      };
+    }
+    switch (syncStatus) {
+      case 'synced':
+        return {
+          badge: 'Синхронизировано с Supabase',
+          dotClass: 'bg-accentEmerald shadow-[0_0_8px_rgba(16,185,129,0.8)]',
+          bgClass: 'bg-accentEmerald/10 border-accentEmerald/30',
+          icon: <Cloud size={16} className="text-accentEmerald animate-pulse" />
+        };
+      case 'syncing':
+        return {
+          badge: 'Обновление данных...',
+          dotClass: 'bg-blue-400 animate-ping',
+          bgClass: 'bg-blue-500/10 border-blue-500/30',
+          icon: <RefreshCw size={16} className="text-blue-400 animate-spin" />
+        };
+      case 'connecting':
+        return {
+          badge: 'Подключение к Supabase...',
+          dotClass: 'bg-amber-400 animate-ping',
+          bgClass: 'bg-amber-500/10 border-amber-500/30',
+          icon: <RefreshCw size={16} className="text-amber-400 animate-spin" />
+        };
+      case 'error':
+        return {
+          badge: 'Ошибка синхронизации',
+          dotClass: 'bg-red-400',
+          bgClass: 'bg-red-500/10 border-red-500/30',
+          icon: <CloudRain size={16} className="text-red-400" />
+        };
+      default:
+        return {
+          badge: 'Отключено',
+          dotClass: 'bg-textMuted/40',
+          bgClass: 'bg-white/[0.02] border-white/10',
+          icon: <CloudOff size={16} className="text-textMuted" />
+        };
+    }
+  };
+
+  const statusInfo = getStatusDisplay();
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4 animate-fade-in">
@@ -186,17 +272,17 @@ export default function SyncModal() {
         {/* Modal Header */}
         <div className="flex items-center justify-between border-b border-borderColor pb-3">
           <div className="flex items-center gap-2.5">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-indigo-500 to-purple-600 flex items-center justify-center text-white shadow-md shadow-indigo-500/20">
-              <Radio size={20} className={syncStatus === 'connected' ? 'animate-pulse' : ''} />
+            <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-emerald-500 to-teal-700 flex items-center justify-center text-white shadow-md shadow-emerald-500/20">
+              <Cloud size={20} />
             </div>
             <div>
               <h2 className="text-base sm:text-lg font-semibold text-white flex items-center gap-2">
-                P2P Синхронизация
-                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
-                  WebRTC + CRDT
+                Облачная синхронизация
+                <span className="text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30">
+                  Supabase Cloud
                 </span>
               </h2>
-              <p className="text-xs text-textMuted">Прямая связь между устройствами без сторонних серверов</p>
+              <p className="text-xs text-textMuted">Надёжная синхронизация закладок и заметок через ваше облако</p>
             </div>
           </div>
           <button 
@@ -208,40 +294,20 @@ export default function SyncModal() {
         </div>
 
         {/* Live Status Card */}
-        <div className={`p-3.5 rounded-xl border transition-all flex flex-col gap-2.5 ${
-          !enabled 
-            ? 'bg-white/[0.02] border-white/10' 
-            : syncStatus === 'connected' 
-              ? 'bg-accentEmerald/10 border-accentEmerald/30' 
-              : 'bg-amber-500/10 border-amber-500/30'
-        }`}>
+        <div className={`p-3.5 rounded-xl border transition-all flex flex-col gap-2.5 ${statusInfo.bgClass}`}>
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
               <span className="relative flex h-3 w-3">
-                {enabled && (
-                  <span className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
-                    syncStatus === 'connected' ? 'bg-accentEmerald' : 'bg-amber-400'
-                  }`}></span>
-                )}
-                <span className={`relative inline-flex rounded-full h-3 w-3 ${
-                  !enabled 
-                    ? 'bg-textMuted/40' 
-                    : syncStatus === 'connected' 
-                      ? 'bg-accentEmerald' 
-                      : 'bg-amber-400'
-                }`}></span>
+                <span className={`relative inline-flex rounded-full h-3 w-3 ${statusInfo.dotClass}`}></span>
               </span>
 
-              <span className="text-sm font-medium text-white">
-                {!enabled 
-                  ? 'Синхронизация выключена' 
-                  : syncStatus === 'connected' 
-                    ? `Подключено устройств: ${connectedPeers.length}` 
-                    : 'Поиск устройств в комнате...'}
-              </span>
+              <div className="flex items-center gap-1.5">
+                {statusInfo.icon}
+                <span className="text-sm font-medium text-white">{statusInfo.badge}</span>
+              </div>
             </div>
 
-            {/* Toggle switch button */}
+            {/* Toggle switch */}
             <button
               onClick={handleToggleSync}
               className={`px-3 py-1 text-xs font-semibold rounded-lg transition-all cursor-pointer ${
@@ -254,180 +320,239 @@ export default function SyncModal() {
             </button>
           </div>
 
-          {/* Connected peers list */}
-          {enabled && connectedPeers.length > 0 && (
-            <div className="pt-2 border-t border-white/10 flex flex-wrap gap-1.5">
-              {connectedPeers.map(peer => (
-                <div 
-                  key={peer.clientId} 
-                  className="flex items-center gap-1.5 px-2.5 py-1 rounded-md bg-white/10 text-xs text-white border border-white/15"
+          {lastSyncedAt && (
+            <div className="text-[11px] text-textMuted flex items-center justify-between pt-1 border-t border-white/5">
+              <span>Последняя синхронизация: {new Date(lastSyncedAt).toLocaleTimeString()}</span>
+              {enabled && (
+                <button
+                  onClick={handleManualSync}
+                  disabled={syncedJustNow || syncStatus === 'syncing'}
+                  className="text-primary hover:text-primaryGlow flex items-center gap-1 cursor-pointer transition-colors"
                 >
-                  <Laptop size={12} className="text-accentEmerald" />
-                  <span className="font-medium">{peer.name}</span>
-                </div>
-              ))}
+                  <RefreshCw size={11} className={syncedJustNow ? 'animate-spin' : ''} />
+                  <span>{syncedJustNow ? 'Синхронизировано!' : 'Синхронизировать сейчас'}</span>
+                </button>
+              )}
             </div>
-          )}
-
-          {enabled && syncStatus === 'searching' && (
-            <p className="text-xs text-textDim leading-relaxed">
-              Откройте Visual Reader на втором устройстве (ноутбук, планшет или телефон) и укажите тот же код комнаты или отсканируйте QR-код.
-            </p>
           )}
         </div>
 
-        {/* Room & Password Settings */}
+        {/* Credentials Form */}
         <div className="flex flex-col gap-3">
-          {/* Room ID Field */}
+          {/* Supabase Project URL */}
+          <div>
+            <label className="text-xs font-medium text-textDim flex items-center gap-1.5 mb-1.5">
+              <Database size={13} className="text-primary" />
+              URL проекта Supabase (Project URL)
+            </label>
+            <input
+              type="text"
+              placeholder="https://xyzcompany.supabase.co"
+              value={supabaseUrl}
+              onChange={(e) => setSupabaseUrl(e.target.value)}
+              className="w-full bg-white/5 border border-borderColor focus:border-primary rounded-lg px-3 py-2 text-xs text-white placeholder-textMuted/50 focus:outline-none transition-colors"
+            />
+          </div>
+
+          {/* Supabase Anon Key */}
+          <div>
+            <label className="text-xs font-medium text-textDim flex items-center justify-between mb-1.5">
+              <span className="flex items-center gap-1.5">
+                <Key size={13} className="text-primary" />
+                Публичный ключ (Anon Public Key)
+              </span>
+              <button
+                type="button"
+                onClick={() => setShowAnonKey(!showAnonKey)}
+                className="text-[11px] text-textMuted hover:text-white transition-colors cursor-pointer flex items-center gap-1"
+              >
+                {showAnonKey ? <EyeOff size={12} /> : <Eye size={12} />}
+                <span>{showAnonKey ? 'Скрыть' : 'Показать'}</span>
+              </button>
+            </label>
+            <div className="relative">
+              <input
+                type={showAnonKey ? 'text' : 'password'}
+                placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9..."
+                value={supabaseAnonKey}
+                onChange={(e) => setSupabaseAnonKey(e.target.value)}
+                className="w-full bg-white/5 border border-borderColor focus:border-primary rounded-lg px-3 py-2 text-xs text-white font-mono placeholder-textMuted/50 focus:outline-none transition-colors pr-10"
+              />
+            </div>
+          </div>
+
+          {/* Sync Key (Unique ID for grouping devices) */}
           <div>
             <div className="flex items-center justify-between mb-1.5">
               <label className="text-xs font-medium text-textDim flex items-center gap-1.5">
-                <Wifi size={13} className="text-primary" />
-                Код комнаты (Room ID)
+                <ShieldCheck size={13} className="text-primary" />
+                Ключ синхронизации (Sync Key)
               </label>
               <button
                 type="button"
-                onClick={handleGenerateNewRoom}
+                onClick={() => setSyncKey(generateSyncKey())}
                 className="text-[11px] text-primary hover:text-primaryGlow transition-colors cursor-pointer flex items-center gap-1"
               >
                 <Sparkles size={11} />
-                Новый случайный код
+                Сгенерировать новый
               </button>
             </div>
             <div className="flex gap-2">
               <input
                 type="text"
-                value={roomId}
-                onChange={(e) => setRoomId(e.target.value)}
-                placeholder="например: reader-sync-5432"
-                className="flex-1 bg-bgMain border border-borderColor rounded-xl px-3.5 py-2 text-sm text-white font-mono placeholder:text-textMuted/50 focus:border-primary focus:outline-none"
+                value={syncKey}
+                onChange={(e) => setSyncKey(e.target.value)}
+                placeholder="reader-4821"
+                className="flex-1 bg-white/5 border border-borderColor focus:border-primary rounded-lg px-3 py-2 text-xs text-white font-mono tracking-wider focus:outline-none transition-colors"
               />
               <button
                 type="button"
-                onClick={handleCopyCode}
-                className="px-3 py-2 bg-white/5 hover:bg-white/10 border border-borderColor rounded-xl text-textDim hover:text-white transition-colors flex items-center gap-1.5 text-xs cursor-pointer"
-                title="Скопировать код"
+                onClick={handleCopySyncKey}
+                className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-borderColor text-xs text-textDim hover:text-white transition-colors cursor-pointer flex items-center gap-1.5 shrink-0"
+                title="Скопировать ключ"
               >
-                {copiedCode ? <Check size={14} className="text-accentEmerald" /> : <Copy size={14} />}
-                <span className="hidden sm:inline">{copiedCode ? 'Скопировано' : 'Копия'}</span>
+                {copiedKey ? <Check size={14} className="text-accentEmerald" /> : <Copy size={14} />}
+                <span className="hidden sm:inline">{copiedKey ? 'Скопировано' : 'Копировать'}</span>
               </button>
             </div>
-          </div>
-
-          {/* Encryption Password */}
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="text-xs font-medium text-textDim flex items-center gap-1.5">
-                <Lock size={13} className="text-amber-400" />
-                Пароль сквозного шифрования (E2E)
-              </label>
-              <button
-                type="button"
-                onClick={handleGenerateNewPassword}
-                className="text-[11px] text-textMuted hover:text-white transition-colors cursor-pointer"
-              >
-                Случайный пароль
-              </button>
-            </div>
-            <div className="relative">
-              <input
-                type={showPassword ? 'text' : 'password'}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Опционально (AES-GCM шифрование)"
-                className="w-full bg-bgMain border border-borderColor rounded-xl px-3.5 py-2 pr-10 text-sm text-white font-mono placeholder:text-textMuted/50 focus:border-primary focus:outline-none"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-textMuted hover:text-white p-1 cursor-pointer"
-              >
-                {showPassword ? <EyeOff size={14} /> : <Eye size={14} />}
-              </button>
-            </div>
+            <p className="text-[11px] text-textMuted mt-1">
+              Укажите одинаковый ключ на всех ваших устройствах для объединения библиотеки.
+            </p>
           </div>
 
           {/* Device Name */}
           <div>
-            <label className="block text-xs font-medium text-textDim mb-1.5">
-              Имя этого устройства
+            <label className="text-xs font-medium text-textDim flex items-center gap-1.5 mb-1.5">
+              <Smartphone size={13} className="text-primary" />
+              Имя текущего устройства
             </label>
             <input
               type="text"
               value={deviceName}
               onChange={(e) => setDeviceName(e.target.value)}
-              placeholder="например: Домашний ПК"
-              className="w-full bg-bgMain border border-borderColor rounded-xl px-3.5 py-2 text-sm text-white placeholder:text-textMuted/50 focus:border-primary focus:outline-none"
+              placeholder="Ноутбук / Телефон"
+              className="w-full bg-white/5 border border-borderColor focus:border-primary rounded-lg px-3 py-2 text-xs text-white placeholder-textMuted/50 focus:outline-none transition-colors"
             />
+          </div>
+
+          {/* Test connection & Save buttons */}
+          <div className="flex flex-wrap items-center gap-2 pt-1">
+            <button
+              type="button"
+              onClick={handleTestConnection}
+              disabled={testingConnection || !supabaseUrl || !supabaseAnonKey}
+              className="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 disabled:opacity-50 text-xs font-medium text-white border border-borderColor transition-all cursor-pointer flex items-center gap-1.5"
+            >
+              <RefreshCw size={13} className={testingConnection ? 'animate-spin text-primary' : ''} />
+              <span>{testingConnection ? 'Проверка...' : 'Проверить подключение'}</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={handleSaveAndApply}
+              className="px-4 py-2 rounded-lg bg-primary hover:bg-primaryGlow text-xs font-medium text-white transition-all cursor-pointer shadow-md shadow-primary/20"
+            >
+              Сохранить и применить
+            </button>
+
+            {testResult && (
+              <div className={`w-full p-2.5 rounded-lg border text-xs flex items-start gap-2 ${
+                testResult.success 
+                  ? 'bg-accentEmerald/10 border-accentEmerald/30 text-emerald-300' 
+                  : 'bg-red-500/10 border-red-500/30 text-red-300'
+              }`}>
+                {testResult.success ? (
+                  <CheckCircle2 size={16} className="text-accentEmerald shrink-0 mt-0.5" />
+                ) : (
+                  <AlertCircle size={16} className="text-red-400 shrink-0 mt-0.5" />
+                )}
+                <span>
+                  {testResult.success 
+                    ? 'Подключение успешно! Таблица reader_sync готова к работе.' 
+                    : testResult.error}
+                </span>
+              </div>
+            )}
           </div>
         </div>
 
-        {/* QR Code & Mobile Pairing Card */}
-        <div className="p-3.5 rounded-xl bg-white/[0.02] border border-borderColor flex flex-col sm:flex-row items-center gap-4">
-          <div className="p-1.5 bg-white rounded-lg shrink-0 shadow-md">
-            <canvas ref={qrCanvasRef} width={130} height={130} />
+        {/* QR Code & Mobile Connection */}
+        <div className="p-3.5 bg-white/[0.02] border border-borderColor rounded-xl flex flex-col sm:flex-row items-center gap-4">
+          <div className="bg-white p-2 rounded-xl shadow-md shrink-0">
+            <canvas ref={qrCanvasRef} className="block" />
           </div>
-          <div className="flex flex-col gap-2 text-center sm:text-left">
-            <div className="flex items-center justify-center sm:justify-start gap-1.5 text-xs font-semibold text-white">
-              <Smartphone size={14} className="text-primary" />
-              Быстрое сопряжение с телефоном
-            </div>
+
+          <div className="flex flex-col gap-2 flex-1 text-center sm:text-left">
+            <h3 className="text-xs font-semibold text-white flex items-center justify-center sm:justify-start gap-1.5">
+              <Share2 size={14} className="text-primary" />
+              Быстрое сопряжение смартфона
+            </h3>
             <p className="text-xs text-textMuted leading-relaxed">
-              Отсканируйте камерой телефона или скопируйте ссылку, чтобы открыть читалку на мобильном с автоматически заполненными параметрами комнаты.
+              Отсканируйте QR-код камерой телефона, чтобы открыть читалку с этим ключом синхронизации.
             </p>
-            <div>
+            <div className="flex items-center justify-center sm:justify-start gap-2 pt-1">
               <button
                 type="button"
-                onClick={handleCopyShareLink}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-xs text-textDim hover:text-white transition-all cursor-pointer"
+                onClick={handleCopyLink}
+                className="px-3 py-1.5 rounded-lg bg-white/5 hover:bg-white/10 border border-borderColor text-xs font-medium text-white transition-colors cursor-pointer flex items-center gap-1.5"
               >
-                {copiedLink ? <Check size={13} className="text-accentEmerald" /> : <Share2 size={13} />}
-                <span>{copiedLink ? 'Ссылка скопирована!' : 'Скопировать ссылку для телефона'}</span>
+                {copiedLink ? <Check size={13} className="text-accentEmerald" /> : <Copy size={13} />}
+                <span>{copiedLink ? 'Ссылка скопирована' : 'Скопировать ссылку'}</span>
               </button>
             </div>
           </div>
         </div>
 
-        {/* Synced Data Stats & Force Sync */}
-        <div className="flex items-center justify-between text-xs text-textMuted border-t border-borderColor pt-3">
-          <div className="flex items-center gap-3">
-            <span>🔖 Закладок: <strong className="text-white">{totalBookmarks}</strong></span>
-            <span>✍️ Заметок: <strong className="text-white">{totalHighlights}</strong></span>
-            <span>✅ Прочитано: <strong className="text-white">{totalRead}</strong></span>
-          </div>
+        {/* Collapsible SQL Setup Helper */}
+        <div className="border border-borderColor rounded-xl overflow-hidden bg-white/[0.01]">
+          <button
+            type="button"
+            onClick={() => setShowSqlHelper(!showSqlHelper)}
+            className="w-full p-3 flex items-center justify-between text-xs font-medium text-textDim hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+          >
+            <div className="flex items-center gap-2">
+              <Code size={14} className="text-primary" />
+              <span>SQL скрипт для настройки Supabase (выполняется один раз)</span>
+            </div>
+            {showSqlHelper ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+          </button>
 
-          {enabled && (
-            <button
-              type="button"
-              onClick={handleManualSync}
-              className="flex items-center gap-1.5 text-primary hover:text-primaryGlow transition-colors cursor-pointer text-xs font-medium"
-              title="Принудительно отправить локальные данные пирам"
-            >
-              <RefreshCw size={12} className={syncedJustNow ? 'animate-spin text-accentEmerald' : ''} />
-              <span>{syncedJustNow ? 'Отправлено!' : 'Синхронизировать'}</span>
-            </button>
+          {showSqlHelper && (
+            <div className="p-3 border-t border-borderColor bg-black/40 flex flex-col gap-2.5">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] text-textMuted">
+                  Вставьте этот SQL в Supabase Dashboard → <b>SQL Editor</b> → <b>Run</b>:
+                </span>
+                <button
+                  type="button"
+                  onClick={handleCopySql}
+                  className="px-2.5 py-1 rounded bg-white/10 hover:bg-white/20 text-[11px] text-white transition-colors cursor-pointer flex items-center gap-1"
+                >
+                  {copiedSql ? <Check size={12} className="text-accentEmerald" /> : <Copy size={12} />}
+                  <span>{copiedSql ? 'Скопировано!' : 'Копировать SQL'}</span>
+                </button>
+              </div>
+              <pre className="text-[11px] font-mono text-emerald-400/90 bg-black/60 p-3 rounded-lg overflow-x-auto border border-white/5 select-all">
+                {SQL_SETUP_SCRIPT}
+              </pre>
+            </div>
           )}
         </div>
 
-        {/* Modal Actions */}
-        <div className="flex items-center justify-end gap-2.5 pt-1">
+        {/* Local Sync Stats Footer */}
+        <div className="pt-2 border-t border-borderColor flex items-center justify-between text-xs text-textMuted">
+          <div className="flex items-center gap-3">
+            <span>Закладок: <strong className="text-white">{totalBookmarks}</strong></span>
+            <span>Выделений: <strong className="text-white">{totalHighlights}</strong></span>
+            <span>Прочитано: <strong className="text-white">{totalRead}</strong></span>
+          </div>
+
           <button
             type="button"
             onClick={() => setSyncModalOpen(false)}
-            className="px-4 py-2 rounded-xl text-xs font-medium text-textDim hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+            className="px-4 py-1.5 rounded-lg bg-white/10 hover:bg-white/15 text-xs text-white transition-colors cursor-pointer"
           >
             Закрыть
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              handleApplySettings();
-              setSyncModalOpen(false);
-            }}
-            className="px-4 py-2 rounded-xl text-xs font-medium bg-primary hover:bg-primaryGlow text-white shadow-md shadow-primary/25 transition-all cursor-pointer flex items-center gap-1.5"
-          >
-            <ShieldCheck size={14} />
-            Применить
           </button>
         </div>
 

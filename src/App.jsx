@@ -16,7 +16,7 @@ import {
   PanelRightOpen,
   PenTool,
   Network,
-  Radio
+  Cloud
 } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
@@ -28,7 +28,7 @@ import NotesModal from './components/NotesModal';
 import ConceptGraphModal from './components/ConceptGraphModal';
 import SyncModal from './components/SyncModal';
 import PanelResizer from './components/PanelResizer';
-import { initSyncServiceFromSettings, connectSync } from './services/syncService';
+import { initSyncServiceFromSettings, connectSync } from './services/supabaseSyncService';
 
 function App() {
   const {
@@ -37,7 +37,7 @@ function App() {
     mobileTab, setMobileTab,
     isSidebarOpen, toggleSidebar, setSidebarOpen, setSidebarWidth,
     isInspectorOpen, toggleInspector, setInspectorOpen, setInspectorWidth,
-    setSyncModalOpen, syncStatus, connectedPeers, syncSettings
+    setSyncModalOpen, syncStatus, syncSettings
   } = useStore();
 
   const [installPrompt, setInstallPrompt] = useState(null);
@@ -109,35 +109,36 @@ function App() {
         await openDB();           // создаёт таблицы если нужно
         await initStoreFromDB();  // загружает настройки, закладки, хайлайты
 
-        // Проверяем, передана ли комната синхронизации через URL/Hash для быстрого сопряжения по QR-коду
+        // Проверяем, передан ли ключ синхронизации через URL/Hash для сопряжения по QR-коду
         let urlParams = null;
         try {
-          if (window.location.hash && window.location.hash.includes('sync_room=')) {
+          if (window.location.hash && (window.location.hash.includes('sync_key=') || window.location.hash.includes('sync_room='))) {
             urlParams = new URLSearchParams(window.location.hash.substring(1));
-          } else if (window.location.search && window.location.search.includes('sync_room=')) {
+          } else if (window.location.search && (window.location.search.includes('sync_key=') || window.location.search.includes('sync_room='))) {
             urlParams = new URLSearchParams(window.location.search);
           }
         } catch (e) {
           console.warn('[App] URL parse error:', e);
         }
 
-        if (urlParams && urlParams.get('sync_room')) {
-          const urlRoom = urlParams.get('sync_room');
-          const urlPass = urlParams.get('sync_pass') || '';
-          console.log('[App] Auto-connecting to sync room from URL:', urlRoom);
+        const incomingSyncKey = urlParams ? (urlParams.get('sync_key') || urlParams.get('sync_room')) : null;
+        if (incomingSyncKey) {
+          console.log('[App] Received sync_key from URL:', incomingSyncKey);
           const currentSettings = useStore.getState().syncSettings || {};
           const newSettings = {
             ...currentSettings,
-            enabled: true,
-            roomId: urlRoom,
-            password: urlPass
+            syncKey: incomingSyncKey
           };
           useStore.getState().setSyncSettings(newSettings);
-          connectSync(newSettings);
+          if (newSettings.enabled && newSettings.supabaseUrl && newSettings.supabaseAnonKey) {
+            connectSync(newSettings);
+          } else {
+            useStore.getState().setSyncModalOpen(true);
+          }
         } else {
-          // Инициализируем P2P синхронизацию, если была включена в настройках
+          // Инициализируем Supabase синхронизацию, если была включена в настройках
           const savedSyncSettings = useStore.getState().syncSettings;
-          if (savedSyncSettings?.enabled && savedSyncSettings?.roomId) {
+          if (savedSyncSettings?.enabled && savedSyncSettings?.supabaseUrl && savedSyncSettings?.supabaseAnonKey && savedSyncSettings?.syncKey) {
             initSyncServiceFromSettings(savedSyncSettings);
           }
         }
@@ -238,41 +239,53 @@ function App() {
             <span className="hidden sm:inline">Заметки</span>
           </button>
 
-          {/* P2P WebRTC Sync Status Button */}
+          {/* Supabase Cloud Sync Status Button */}
           <button
             onClick={() => setSyncModalOpen(true)}
             className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-all cursor-pointer ${
               !syncSettings?.enabled
                 ? 'bg-white/5 border-white/10 text-textDim hover:text-white'
-                : syncStatus === 'connected'
+                : syncStatus === 'synced'
                   ? 'border-accentEmerald/40 bg-accentEmerald/10 text-accentEmerald hover:bg-accentEmerald/20'
-                  : 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
+                  : syncStatus === 'error'
+                    ? 'border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'
+                    : 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
             }`}
             title={
               !syncSettings?.enabled
-                ? 'P2P Синхронизация отключена (нажмите для настройки)'
-                : syncStatus === 'connected'
-                  ? `P2P синхронизация активна: подключено ${connectedPeers?.length || 0} устр.`
-                  : 'P2P: поиск устройств в комнате...'
+                ? 'Облачная синхронизация выключена (нажмите для настройки)'
+                : syncStatus === 'synced'
+                  ? 'Облако: синхронизировано'
+                  : syncStatus === 'syncing'
+                    ? 'Облако: отправка изменений...'
+                    : syncStatus === 'connecting'
+                      ? 'Облако: подключение...'
+                      : 'Облако: ошибка синхронизации'
             }
           >
             {/* Status indicator dot */}
             <div className={`w-2 h-2 rounded-full shrink-0 ${
               !syncSettings?.enabled
                 ? 'bg-white/20'
-                : syncStatus === 'connected'
-                  ? 'bg-accentEmerald shadow-[0_0_8px_rgba(16,185,129,0.8)] animate-pulse'
-                  : 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)] animate-ping'
+                : syncStatus === 'synced'
+                  ? 'bg-accentEmerald shadow-[0_0_8px_rgba(16,185,129,0.8)]'
+                  : syncStatus === 'error'
+                    ? 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.8)]'
+                    : 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)] animate-ping'
             }`}></div>
 
-            <Radio size={14} className={syncStatus === 'connected' ? 'animate-pulse text-accentEmerald' : ''} />
+            <Cloud size={14} className={syncStatus === 'synced' ? 'text-accentEmerald' : syncStatus === 'syncing' ? 'text-blue-400 animate-spin' : ''} />
 
             <span className="hidden sm:inline">
               {!syncSettings?.enabled
-                ? 'Синхр (выкл)'
-                : syncStatus === 'connected'
-                  ? `Синхр (${connectedPeers?.length || 0})`
-                  : 'Поиск пиров...'}
+                ? 'Облако (выкл)'
+                : syncStatus === 'synced'
+                  ? 'В сети'
+                  : syncStatus === 'syncing'
+                    ? 'Синхр...'
+                    : syncStatus === 'error'
+                      ? 'Ошибка'
+                      : 'Подключение...'}
             </span>
           </button>
 
