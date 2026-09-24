@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
-import { ChevronLeft, ChevronRight, Sparkles, CheckCircle2, Bookmark, PenTool } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, CheckCircle2, Bookmark, PenTool, Layers, BookMarked, Award } from 'lucide-react';
 
 const HIGHLIGHT_COLORS = [
   { id: 'yellow', value: 'rgba(245, 158, 11, 0.16)', dotColor: '#f59e0b', label: 'Янтарный' },
@@ -88,7 +88,15 @@ export default function Reader() {
     pendingSearchScroll,
     setPendingSearchScroll,
     setNotesOpen,
-    setInspectorOpen
+    setInspectorOpen,
+    setQuizOpen,
+    setQuizTargetSection,
+    quizResults,
+    setFlashcardsOpen,
+    setFlashcardModalTab,
+    addFlashcard,
+    setGlossaryOpen,
+    addGlossaryTerm
   } = useStore();
   const contentRef = useRef(null);
   const [selectionRange, setSelectionRange] = useState(null);
@@ -98,9 +106,11 @@ export default function Reader() {
   const activeChapter = chapters[activeChapterIdx];
   const section = activeChapter?.sections?.[activeSectionIdx];
   const chapterTitle = activeChapter?.title;
+  const sectionId = section?.id || `${activeChapterIdx}_${activeSectionIdx}`;
   const isRead = readSections[currentBookId]?.includes(section?.id);
   const bookBookmarks = bookmarks[currentBookId] || [];
   const isBookmarked = bookBookmarks.some(b => b.id === section?.id);
+  const lastQuizResult = quizResults[currentBookId]?.[sectionId];
   
   const toggleReadStatus = () => {
     if (!section?.id) return;
@@ -331,8 +341,45 @@ export default function Reader() {
           className="prose prose-invert prose-base sm:prose-lg max-w-none prose-headings:text-white prose-p:text-textMain prose-p:leading-relaxed prose-a:text-primaryGlow prose-pre:bg-bgSidebar prose-pre:border-borderColor prose-img:rounded-lg overflow-x-auto"
         ></div>
 
+        {/* Self-Test / Quiz Banner */}
+        <div className="mt-10 p-4 sm:p-5 rounded-2xl bg-gradient-to-r from-primary/10 via-accentPurple/10 to-transparent border border-primary/30 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 shadow-lg shadow-primary/5">
+          <div className="flex items-start gap-3">
+            <div className="w-10 h-10 rounded-xl bg-primary/20 flex items-center justify-center text-primaryGlow shrink-0 mt-0.5">
+              <Award size={20} />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-white">Проверь себя по этому разделу</h3>
+                {lastQuizResult && (
+                  <span className={`text-[10px] px-2 py-0.5 rounded-full font-semibold ${
+                    lastQuizResult.percentage >= 80 ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/30' :
+                    lastQuizResult.percentage >= 50 ? 'bg-amber-500/20 text-amber-300 border border-amber-500/30' :
+                    'bg-red-500/20 text-red-300 border border-red-500/30'
+                  }`}>
+                    {lastQuizResult.score}/{lastQuizResult.total} ({lastQuizResult.percentage}%)
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-textMuted leading-relaxed mt-0.5">
+                ИИ составит 4 концептуальных вопроса для проверки понимания сути материала.
+              </p>
+            </div>
+          </div>
+
+          <button
+            onClick={() => {
+              setQuizTargetSection({ chapterIdx: activeChapterIdx, sectionIdx: activeSectionIdx, title: section?.title });
+              setQuizOpen(true);
+            }}
+            className="px-4 py-2.5 rounded-xl bg-primary hover:bg-primaryGlow text-white text-xs font-semibold shadow-md shadow-primary/20 flex items-center gap-2 transition-all cursor-pointer shrink-0"
+          >
+            <span>{lastQuizResult ? 'Пройти тест снова' : 'Начать тест'}</span>
+            <ChevronRight size={14} />
+          </button>
+        </div>
+
         {/* Navigation bottom pagination */}
-        <div className="mt-12 pt-6 border-t border-borderColor flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
+        <div className="mt-8 pt-6 border-t border-borderColor flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-3">
           {prevSectionInfo ? (
             <button
               onClick={() => setActiveChapter(prevSectionInfo.cIdx, prevSectionInfo.sIdx)}
@@ -364,8 +411,8 @@ export default function Reader() {
       {/* Floating Action Bar for Selected Text */}
       {selectedText && (
         <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-200">
-          <div className="bg-bgSidebar border border-borderColor shadow-2xl shadow-black rounded-2xl p-2 flex flex-col gap-2 w-[90vw] max-w-sm">
-            <div className="flex items-center justify-between px-2 pt-1 pb-2 border-b border-white/5">
+          <div className="bg-bgSidebar border border-borderColor shadow-2xl shadow-black rounded-2xl p-2.5 flex flex-col gap-2 w-[92vw] max-w-sm">
+            <div className="flex items-center justify-between px-1 border-b border-white/5 pb-1.5">
               <span className="text-xs text-textMuted font-medium">Действия с текстом</span>
               <span className="text-[10px] text-textDim">{selectedText.length} симв.</span>
             </div>
@@ -375,25 +422,69 @@ export default function Reader() {
                 <button
                   key={c.id}
                   onClick={() => handleHighlight(c.value)}
-                  className="w-8 h-8 rounded-full border border-white/20 hover:scale-110 transition-transform flex items-center justify-center cursor-pointer shadow-sm"
+                  className="w-7 h-7 rounded-full border border-white/20 hover:scale-110 transition-transform flex items-center justify-center cursor-pointer shadow-sm"
                   style={{ backgroundColor: c.dotColor }}
                   title={`Выделить цветом: ${c.label}`}
                 >
-                  <PenTool size={14} className="text-white opacity-90" />
+                  <PenTool size={13} className="text-white opacity-90" />
                 </button>
               ))}
               
-              <div className="w-px h-8 bg-white/10 mx-1"></div>
+              <div className="w-px h-7 bg-white/10 mx-1"></div>
               
               <button 
                 onClick={() => {
                   setMobileTab('ai');
                   setInspectorOpen(true);
                 }}
-                className="flex-1 py-1.5 px-3 rounded-lg bg-gradient-to-r from-primary to-accentPurple text-white text-xs font-semibold shadow-lg shadow-primary/20 flex items-center justify-center gap-1.5 border border-white/20 cursor-pointer hover:brightness-110 transition-all"
+                className="flex-1 py-1.5 px-2.5 rounded-lg bg-gradient-to-r from-primary to-accentPurple text-white text-xs font-semibold shadow-md shadow-primary/20 flex items-center justify-center gap-1.5 border border-white/20 cursor-pointer hover:brightness-110 transition-all"
               >
-                <Sparkles size={14} /> ИИ
+                <Sparkles size={13} /> ИИ
               </button>
+            </div>
+
+            {/* Flashcard and Glossary quick actions */}
+            <div className="flex items-center gap-1.5 pt-1 border-t border-white/5">
+              <button
+                onClick={() => {
+                  addFlashcard(currentBookId, {
+                    front: selectedText,
+                    back: '',
+                    chapterIdx: activeChapterIdx,
+                    sectionIdx: activeSectionIdx
+                  });
+                  setFlashcardModalTab('create');
+                  setFlashcardsOpen(true);
+                  window.getSelection()?.removeAllRanges();
+                  setSelectedText('');
+                }}
+                className="flex-1 py-1.5 px-2 rounded-lg bg-white/5 hover:bg-white/10 text-textMain text-[11px] font-medium transition-all flex items-center justify-center gap-1 border border-white/10 cursor-pointer"
+                title="Создать флешкарту для повторения"
+              >
+                <Layers size={12} className="text-primaryGlow" />
+                <span>→ Флешкарта</span>
+              </button>
+
+              {selectedText.trim().split(/\s+/).length <= 6 && (
+                <button
+                  onClick={() => {
+                    addGlossaryTerm(currentBookId, {
+                      term: selectedText.trim(),
+                      definition: '',
+                      chapterIdx: activeChapterIdx,
+                      sectionIdx: activeSectionIdx
+                    });
+                    setGlossaryOpen(true);
+                    window.getSelection()?.removeAllRanges();
+                    setSelectedText('');
+                  }}
+                  className="flex-1 py-1.5 px-2 rounded-lg bg-white/5 hover:bg-white/10 text-textMain text-[11px] font-medium transition-all flex items-center justify-center gap-1 border border-white/10 cursor-pointer"
+                  title="Добавить в глоссарий терминов"
+                >
+                  <BookMarked size={12} className="text-accentEmerald" />
+                  <span>В глоссарий</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
-import { X, Download, Trash2, PenTool } from 'lucide-react';
+import { X, Download, Trash2, PenTool, Layers } from 'lucide-react';
 
 export default function NotesModal() {
   const { 
@@ -12,7 +12,10 @@ export default function NotesModal() {
     removeHighlight, 
     updateHighlightNote, 
     setActiveChapter,
-    setPendingScrollHighlightId
+    setPendingScrollHighlightId,
+    addFlashcard,
+    setFlashcardsOpen,
+    setFlashcardModalTab
   } = useStore();
   const [editingId, setEditingId] = useState(null);
   const [noteText, setNoteText] = useState('');
@@ -150,16 +153,37 @@ export default function NotesModal() {
                         </button>
                       )}
                       
-                      <button
-                        onClick={() => {
-                          setPendingScrollHighlightId(h.id);
-                          setActiveChapter(h.chapterIdx, h.sectionIdx);
-                          setNotesOpen(false);
-                        }}
-                        className="text-xs text-textMuted hover:text-white underline underline-offset-2 transition-colors cursor-pointer"
-                      >
-                        Перейти к тексту
-                      </button>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            addFlashcard(currentBookId, {
+                              front: h.text,
+                              back: h.note || '',
+                              chapterIdx: h.chapterIdx,
+                              sectionIdx: h.sectionIdx
+                            });
+                            setFlashcardModalTab('create');
+                            setNotesOpen(false);
+                            setFlashcardsOpen(true);
+                          }}
+                          className="text-xs text-primaryGlow hover:text-white flex items-center gap-1 px-2 py-1 rounded bg-primary/10 hover:bg-primary/20 transition-colors cursor-pointer"
+                          title="Создать флешкарту для интервального повторения"
+                        >
+                          <Layers size={12} />
+                          <span>→ Флешкарта</span>
+                        </button>
+                        
+                        <button
+                          onClick={() => {
+                            setPendingScrollHighlightId(h.id);
+                            setActiveChapter(h.chapterIdx, h.sectionIdx);
+                            setNotesOpen(false);
+                          }}
+                          className="text-xs text-textMuted hover:text-white underline underline-offset-2 transition-colors cursor-pointer"
+                        >
+                          Перейти к тексту
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>

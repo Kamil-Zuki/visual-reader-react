@@ -224,6 +224,136 @@ export const useStore = create((set) => ({
     return { chatHistories: updated };
   }),
 
+  // --- Quiz / Self-Test (Phase 2.1) ---
+  isQuizOpen: false,
+  setQuizOpen: (isOpen) => set({ isQuizOpen: isOpen }),
+  quizTargetSection: null, // { chapterIdx, sectionIdx, title, text }
+  setQuizTargetSection: (sec) => set({ quizTargetSection: sec }),
+  quizResults: {}, // { [bookId]: { [sectionId]: { score, total, percentage, timestamp } } }
+  saveQuizResult: (bookId, sectionId, result) => set((state) => {
+    const bookResults = state.quizResults[bookId] || {};
+    const updated = {
+      ...state.quizResults,
+      [bookId]: { ...bookResults, [sectionId]: result }
+    };
+    setStoreValue('ddia_quiz_results', updated);
+    return { quizResults: updated };
+  }),
+
+  // --- Flashcards / Spaced Repetition (Phase 2.2) ---
+  isFlashcardsOpen: false,
+  setFlashcardsOpen: (isOpen) => set({ isFlashcardsOpen: isOpen }),
+  flashcardModalTab: 'review', // 'review' | 'all' | 'create'
+  setFlashcardModalTab: (tab) => set({ flashcardModalTab: tab }),
+  flashcards: {}, // { [bookId]: [ ...cards ] }
+  addFlashcard: (bookId, card) => set((state) => {
+    const list = state.flashcards[bookId] || [];
+    const newCard = {
+      id: card.id || 'fc_' + Date.now(),
+      front: card.front || '',
+      back: card.back || '',
+      sourceText: card.sourceText || '',
+      chapterIdx: card.chapterIdx ?? 0,
+      sectionIdx: card.sectionIdx ?? 0,
+      sectionTitle: card.sectionTitle || '',
+      repetitions: 0,
+      interval: 1,
+      easeFactor: 2.5,
+      nextReviewDate: Date.now(),
+      lastReviewed: null,
+      createdAt: Date.now(),
+      ...card
+    };
+    const updated = { ...state.flashcards, [bookId]: [newCard, ...list.filter(c => c.id !== newCard.id)] };
+    setStoreValue('ddia_flashcards', updated);
+    return { flashcards: updated };
+  }),
+  updateFlashcard: (bookId, cardId, fields) => set((state) => {
+    const list = state.flashcards[bookId] || [];
+    const updatedList = list.map(c => c.id === cardId ? { ...c, ...fields, updatedAt: Date.now() } : c);
+    const updated = { ...state.flashcards, [bookId]: updatedList };
+    setStoreValue('ddia_flashcards', updated);
+    return { flashcards: updated };
+  }),
+  deleteFlashcard: (bookId, cardId) => set((state) => {
+    const list = state.flashcards[bookId] || [];
+    const updated = { ...state.flashcards, [bookId]: list.filter(c => c.id !== cardId) };
+    setStoreValue('ddia_flashcards', updated);
+    return { flashcards: updated };
+  }),
+  reviewFlashcard: (bookId, cardId, rating) => set((state) => {
+    const list = state.flashcards[bookId] || [];
+    const updatedList = list.map((card) => {
+      if (card.id !== cardId) return card;
+      let { repetitions = 0, interval = 1, easeFactor = 2.5 } = card;
+
+      if (rating < 2) {
+        // Again / Fail
+        repetitions = 0;
+        interval = 1;
+      } else {
+        // Hard, Good, Easy (ratings 2, 3, 4)
+        repetitions += 1;
+        if (repetitions === 1) {
+          interval = 1;
+        } else if (repetitions === 2) {
+          interval = 3;
+        } else {
+          interval = Math.max(1, Math.round(interval * easeFactor));
+        }
+        easeFactor = Math.max(1.3, easeFactor + (0.1 - (4 - rating) * (0.08 + (4 - rating) * 0.02)));
+      }
+
+      const nextReviewDate = Date.now() + interval * 24 * 60 * 60 * 1000;
+      return {
+        ...card,
+        repetitions,
+        interval,
+        easeFactor,
+        nextReviewDate,
+        lastReviewed: Date.now()
+      };
+    });
+    const updated = { ...state.flashcards, [bookId]: updatedList };
+    setStoreValue('ddia_flashcards', updated);
+    return { flashcards: updated };
+  }),
+
+  // --- Glossary (Phase 2.3) ---
+  isGlossaryOpen: false,
+  setGlossaryOpen: (isOpen) => set({ isGlossaryOpen: isOpen }),
+  glossary: {}, // { [bookId]: [ ...terms ] }
+  addGlossaryTerm: (bookId, termItem) => set((state) => {
+    const list = state.glossary[bookId] || [];
+    const newTerm = {
+      id: termItem.id || 'term_' + Date.now(),
+      term: termItem.term || '',
+      definition: termItem.definition || '',
+      chapterIdx: termItem.chapterIdx ?? 0,
+      sectionIdx: termItem.sectionIdx ?? 0,
+      sectionTitle: termItem.sectionTitle || '',
+      createdAt: Date.now(),
+      ...termItem
+    };
+    const filtered = list.filter(t => t.term.toLowerCase() !== newTerm.term.toLowerCase() && t.id !== newTerm.id);
+    const updated = { ...state.glossary, [bookId]: [newTerm, ...filtered] };
+    setStoreValue('ddia_glossary', updated);
+    return { glossary: updated };
+  }),
+  updateGlossaryTerm: (bookId, termId, fields) => set((state) => {
+    const list = state.glossary[bookId] || [];
+    const updatedList = list.map(t => t.id === termId ? { ...t, ...fields, updatedAt: Date.now() } : t);
+    const updated = { ...state.glossary, [bookId]: updatedList };
+    setStoreValue('ddia_glossary', updated);
+    return { glossary: updated };
+  }),
+  deleteGlossaryTerm: (bookId, termId) => set((state) => {
+    const list = state.glossary[bookId] || [];
+    const updated = { ...state.glossary, [bookId]: list.filter(t => t.id !== termId) };
+    setStoreValue('ddia_glossary', updated);
+    return { glossary: updated };
+  }),
+
   // --- Supabase Cloud Sync State ---
   isSyncModalOpen: false,
   setSyncModalOpen: (isOpen) => set({ isSyncModalOpen: isOpen }),
@@ -289,7 +419,10 @@ export async function initStoreFromDB() {
     deletedCommands,
     sidebarOpen, inspectorOpen, sidebarWidth, inspectorWidth,
     supabaseSyncSettings, p2pSyncSettings,
-    chatHistories
+    chatHistories,
+    quizResults,
+    flashcards,
+    glossary
   ] = await Promise.all([
     getStoreValue('openrouter_api_key', ''),
     getStoreValue('openrouter_model', 'openrouter/free'),
@@ -309,7 +442,10 @@ export async function initStoreFromDB() {
     getStoreValue('ddia_inspector_width', 420),
     getStoreValue('supabase_sync_settings', null),
     getStoreValue('p2p_sync_settings', null),
-    getStoreValue('ddia_chat_histories', {})
+    getStoreValue('ddia_chat_histories', {}),
+    getStoreValue('ddia_quiz_results', {}),
+    getStoreValue('ddia_flashcards', {}),
+    getStoreValue('ddia_glossary', {})
   ]);
 
   const defaultSyncSettings = {
@@ -347,7 +483,10 @@ export async function initStoreFromDB() {
     sidebarWidth: parseInt(sidebarWidth, 10) || 300,
     inspectorWidth: parseInt(inspectorWidth, 10) || 420,
     syncSettings: resolvedSyncSettings,
-    chatHistories: chatHistories || {}
+    chatHistories: chatHistories || {},
+    quizResults: quizResults || {},
+    flashcards: flashcards || {},
+    glossary: glossary || {}
   });
 }
 

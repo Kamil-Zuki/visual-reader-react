@@ -12,7 +12,8 @@ export default function Sidebar() {
     sidebarWidth, 
     setSidebarOpen,
     readSections,
-    bookmarks
+    bookmarks,
+    quizResults
   } = useStore();
   const [expandedChapters, setExpandedChapters] = useState(new Set([0]));
   const [searchQuery, setSearchQuery] = useState('');
@@ -220,6 +221,7 @@ export default function Sidebar() {
                     {sections.map((sec, sIdx) => {
                       const isSecActive = isActive && activeSectionIdx === sIdx;
                       const isRead = bookReadSections.includes(sec.id);
+                      const quiz = quizResults[currentBookId]?.[sec.id];
                       return (
                         <div 
                           key={sIdx}
@@ -236,7 +238,21 @@ export default function Sidebar() {
                               </div>
                             )}
                           </div>
-                          <span className={`leading-snug ${isRead && !isSecActive ? 'text-textDim' : ''}`}>{sec.title}</span>
+                          <span className={`leading-snug flex-1 ${isRead && !isSecActive ? 'text-textDim' : ''}`}>{sec.title}</span>
+                          {quiz && (
+                            <span 
+                              className={`shrink-0 text-[10px] font-mono px-1.5 py-0.2 rounded-full border ${
+                                quiz.percentage >= 80 
+                                  ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' 
+                                  : quiz.percentage >= 50 
+                                    ? 'border-amber-500/40 text-amber-400 bg-amber-500/10' 
+                                    : 'border-red-500/40 text-red-400 bg-red-500/10'
+                              }`}
+                              title={`Квиз: ${quiz.score}/${quiz.total} (${quiz.percentage}%)`}
+                            >
+                              {quiz.percentage}%
+                            </span>
+                          )}
                         </div>
                       );
                     })}

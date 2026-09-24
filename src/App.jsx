@@ -17,7 +17,10 @@ import {
   PenTool,
   Network,
   Cloud,
-  Search
+  Search,
+  Layers,
+  BookMarked,
+  Award
 } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
@@ -29,19 +32,26 @@ import NotesModal from './components/NotesModal';
 import ConceptGraphModal from './components/ConceptGraphModal';
 import SyncModal from './components/SyncModal';
 import SearchModal from './components/SearchModal';
+import QuizModal from './components/QuizModal';
+import FlashcardModal from './components/FlashcardModal';
+import GlossaryModal from './components/GlossaryModal';
 import PanelResizer from './components/PanelResizer';
 import { initSyncServiceFromSettings, connectSync } from './services/supabaseSyncService';
 
 function App() {
   const {
-    currentBook, setCurrentBook,
+    currentBook, setCurrentBook, currentBookId,
     setLibraryOpen, setSettingsOpen, setNotesOpen, setGraphOpen, apiKey,
     setSearchOpen,
+    setFlashcardsOpen, setGlossaryOpen, flashcards,
     mobileTab, setMobileTab,
     isSidebarOpen, toggleSidebar, setSidebarOpen, setSidebarWidth,
     isInspectorOpen, toggleInspector, setInspectorOpen, setInspectorWidth,
     setSyncModalOpen, syncStatus, syncSettings
   } = useStore();
+
+  const bookCards = flashcards[currentBookId] || [];
+  const dueCardsCount = bookCards.filter(c => !c.nextReviewDate || c.nextReviewDate <= Date.now()).length;
 
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
@@ -259,6 +269,31 @@ function App() {
             <span className="hidden sm:inline">Заметки</span>
           </button>
 
+          {/* Flashcards & Spaced Repetition Button */}
+          <button
+            onClick={() => setFlashcardsOpen(true)}
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer relative"
+            title="Флешкарты и интервальное повторение"
+          >
+            <Layers size={14} className="text-primaryGlow" />
+            <span className="hidden sm:inline">Карточки</span>
+            {dueCardsCount > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full bg-primary text-white text-[10px] font-mono font-semibold shadow-sm">
+                {dueCardsCount}
+              </span>
+            )}
+          </button>
+
+          {/* Glossary Button */}
+          <button
+            onClick={() => setGlossaryOpen(true)}
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+            title="Глоссарий терминов книги"
+          >
+            <BookMarked size={14} className="text-accentEmerald" />
+            <span className="hidden sm:inline">Глоссарий</span>
+          </button>
+
           {/* Supabase Cloud Sync Status Button */}
           <button
             onClick={() => setSyncModalOpen(true)}
@@ -433,6 +468,9 @@ function App() {
 
       {/* Modals */}
       <SearchModal />
+      <QuizModal />
+      <FlashcardModal />
+      <GlossaryModal />
       <LibraryModal />
       <SettingsModal />
       <NotesModal />
