@@ -167,6 +167,11 @@ export async function pushLocalData(syncKey) {
     apiKey: state.apiKey || '',
     model: state.model || 'openrouter/free',
     language: state.language || 'ru',
+    savedCards: state.savedCards || [],
+    deletedCards: state.deletedCards || {},
+    flashcards: state.flashcards || {},
+    glossary: state.glossary || {},
+    readingLog: state.readingLog || {},
     deviceName: state.syncSettings?.deviceName || getDefaultDeviceName(),
     clientTimestamp: Date.now()
   };
@@ -306,7 +311,87 @@ export async function mergeRemoteIntoLocal(remoteData) {
       });
     }
 
-    // 4. Merge Prompts & Custom Commands
+    // 5. Merge savedCards (tombstone)
+    const localDeletedCrds = state.deletedCards || {};
+    const remoteDeletedCrds = remoteData.deletedCards || {};
+    const mergedDeletedCards = { ...localDeletedCrds };
+    for (const [k, v] of Object.entries(remoteDeletedCrds)) {
+      mergedDeletedCards[k] = Math.max(mergedDeletedCards[k] || 0, v || 0);
+    }
+
+    const localSavedCards = state.savedCards || [];
+    const remoteSavedCards = remoteData.savedCards || [];
+    const cardMap = new Map();
+    localSavedCards.forEach(c => {
+      const delTime = mergedDeletedCards[c.id] || 0;
+      const cTime = c.updatedAt || c.createdAt || 0;
+      if (!delTime || cTime > delTime) cardMap.set(c.id, c);
+    });
+    remoteSavedCards.forEach(c => {
+      const delTime = mergedDeletedCards[c.id] || 0;
+      const cTime = c.updatedAt || c.createdAt || 0;
+      if (!delTime || cTime > delTime) {
+        if (!cardMap.has(c.id)) {
+          cardMap.set(c.id, c);
+        } else {
+          const existing = cardMap.get(c.id);
+          if (cTime > (existing.updatedAt || existing.createdAt || 0)) {
+            cardMap.set(c.id, { ...existing, ...c });
+          }
+        }
+      }
+    });
+    const mergedSavedCards = Array.from(cardMap.values());
+
+    // 6. Merge flashcards (per bookId, union by card id)
+    const localFlashcards = state.flashcards || {};
+    const remoteFlashcards = remoteData.flashcards || {};
+    const mergedFlashcards = { ...localFlashcards };
+    for (const [bookId, remoteList] of Object.entries(remoteFlashcards)) {
+      const localList = localFlashcards[bookId] || [];
+      const fcMap = new Map(localList.map(c => [c.id, c]));
+      remoteList.forEach(c => {
+        if (!fcMap.has(c.id)) {
+          fcMap.set(c.id, c);
+        } else {
+          const existing = fcMap.get(c.id);
+          const existT = existing.updatedAt || existing.createdAt || 0;
+          const remT = c.updatedAt || c.createdAt || 0;
+          if (remT > existT) fcMap.set(c.id, { ...existing, ...c });
+        }
+      });
+      mergedFlashcards[bookId] = Array.from(fcMap.values());
+    }
+
+    // 7. Merge glossary (per bookId, union by term id)
+    const localGlossary = state.glossary || {};
+    const remoteGlossary = remoteData.glossary || {};
+    const mergedGlossary = { ...localGlossary };
+    for (const [bookId, remoteList] of Object.entries(remoteGlossary)) {
+      const localList = localGlossary[bookId] || [];
+      const gMap = new Map(localList.map(t => [t.id, t]));
+      remoteList.forEach(t => {
+        if (!gMap.has(t.id)) {
+          gMap.set(t.id, t);
+        } else {
+          const existing = gMap.get(t.id);
+          const existT = existing.updatedAt || existing.createdAt || 0;
+          const remT = t.updatedAt || t.createdAt || 0;
+          if (remT > existT) gMap.set(t.id, { ...existing, ...t });
+        }
+      });
+      mergedGlossary[bookId] = Array.from(gMap.values());
+    }
+
+    // 8. Merge readingLog (union by date, take max count)
+    const localLog = state.readingLog || {};
+    const remoteLog = remoteData.readingLog || {};
+    const mergedLog = { ...localLog };
+    for (const [date, count] of Object.entries(remoteLog)) {
+      mergedLog[date] = Math.max(mergedLog[date] || 0, count || 0);
+    }
+
+    // 9. Merge Prompts & Custom Commands
     const localDeletedCmd = state.deletedCommands || {};
     const remoteDeletedCmd = remoteData.deletedCommands || {};
     const mergedDeletedCmd = { ...localDeletedCmd };
@@ -358,6 +443,11 @@ export async function mergeRemoteIntoLocal(remoteData) {
       prompts: mergedPrompts,
       customCommands: mergedCustomCommands,
       deletedCommands: mergedDeletedCmd,
+      savedCards: mergedSavedCards,
+      deletedCards: mergedDeletedCards,
+      flashcards: mergedFlashcards,
+      glossary: mergedGlossary,
+      readingLog: mergedLog,
       lastSyncedAt: new Date().toISOString()
     };
 
@@ -369,6 +459,11 @@ export async function mergeRemoteIntoLocal(remoteData) {
       setStoreValue('ddia_deleted_bookmarks', mergedDeletedB),
       setStoreValue('ddia_unmarked_sections', mergedUnmarked),
       setStoreValue('ddia_deleted_commands', mergedDeletedCmd),
+      setStoreValue('ddia_saved_cards', mergedSavedCards),
+      setStoreValue('ddia_deleted_cards', mergedDeletedCards),
+      setStoreValue('ddia_flashcards', mergedFlashcards),
+      setStoreValue('ddia_glossary', mergedGlossary),
+      setStoreValue('ddia_reading_log', mergedLog),
       saveSystemPromptsToDB(mergedPrompts)
     ];
 
@@ -484,6 +579,11 @@ function setupStoreAutoSync(syncKey) {
   let prevDeletedCmd = useStore.getState().deletedCommands;
   let prevApiKey = useStore.getState().apiKey;
   let prevModel = useStore.getState().model;
+  let prevSavedCards = useStore.getState().savedCards;
+  let prevDeletedCards = useStore.getState().deletedCards;
+  let prevFlashcards = useStore.getState().flashcards;
+  let prevGlossary = useStore.getState().glossary;
+  let prevReadingLog = useStore.getState().readingLog;
 
   storeUnsubscribe = useStore.subscribe((state) => {
     if (isApplyingRemoteUpdate) return;
@@ -500,6 +600,11 @@ function setupStoreAutoSync(syncKey) {
     const dcChanged = state.deletedCommands !== prevDeletedCmd;
     const kChanged = state.apiKey !== prevApiKey;
     const mChanged = state.model !== prevModel;
+    const scChanged = state.savedCards !== prevSavedCards;
+    const dcrdChanged = state.deletedCards !== prevDeletedCards;
+    const fcChanged = state.flashcards !== prevFlashcards;
+    const glChanged = state.glossary !== prevGlossary;
+    const rlChanged = state.readingLog !== prevReadingLog;
 
     prevBookmarks = state.bookmarks;
     prevHighlights = state.highlights;
@@ -512,8 +617,13 @@ function setupStoreAutoSync(syncKey) {
     prevDeletedCmd = state.deletedCommands;
     prevApiKey = state.apiKey;
     prevModel = state.model;
+    prevSavedCards = state.savedCards;
+    prevDeletedCards = state.deletedCards;
+    prevFlashcards = state.flashcards;
+    prevGlossary = state.glossary;
+    prevReadingLog = state.readingLog;
 
-    if (bChanged || hChanged || rChanged || dhChanged || dbChanged || unChanged || pChanged || cChanged || dcChanged || kChanged || mChanged) {
+    if (bChanged || hChanged || rChanged || dhChanged || dbChanged || unChanged || pChanged || cChanged || dcChanged || kChanged || mChanged || scChanged || dcrdChanged || fcChanged || glChanged || rlChanged) {
       if (debounceTimeout) clearTimeout(debounceTimeout);
 
       useStore.setState({ syncStatus: 'syncing' });

@@ -135,18 +135,10 @@ export default function AIInspector() {
     currentBook, currentBookId, activeChapterIdx, activeSectionIdx,
     highlights,
     aiInspectorTab, setAiInspectorTab,
-    chatHistories, addChatMessage, clearChatHistory
+    chatHistories, addChatMessage, clearChatHistory,
+    savedCards, addSavedCard, deleteSavedCard, clearSavedCards, updateSavedCard
   } = useStore();
   
-  const [selectedText, setSelectedText] = useState('');
-  const [cards, setCards] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('ddia_saved_cards') || '[]');
-    } catch {
-      return [];
-    }
-  });
-
   const [fullscreenDiagram, setFullscreenDiagram] = useState({ isOpen: false, svg: '', title: '' });
   const [commandModalOpen, setCommandModalOpen] = useState(false);
   const [editingCommand, setEditingCommand] = useState(null);
@@ -174,10 +166,7 @@ export default function AIInspector() {
   const chatKey = `${currentBookId}_${activeChapterIdx}_${activeSectionIdx}`;
   const currentChat = chatHistories[chatKey] || [];
 
-  // Sync cards with localStorage
-  useEffect(() => {
-    localStorage.setItem('ddia_saved_cards', JSON.stringify(cards));
-  }, [cards]);
+  const [selectedText, setSelectedText] = useState('');
 
   // Scroll chat to bottom when new messages arrive or loading changes
   useEffect(() => {
@@ -236,10 +225,14 @@ export default function AIInspector() {
       quote: selectedText,
       loading: true,
       content: '',
-      svg: null
+      svg: null,
+      chapterIdx: activeChapterIdx,
+      sectionIdx: activeSectionIdx,
+      sectionTitle: currentSection?.title || '',
+      createdAt: Date.now()
     };
 
-    setCards(prev => [newCard, ...prev]);
+    addSavedCard(newCard);
 
     const targetLang = LANGUAGE_NAMES[language] || 'Russian';
     let systemPrompt = '';
@@ -306,20 +299,10 @@ export default function AIInspector() {
         }
       }
 
-      setCards(prev => prev.map(c => {
-        if (c.id === cardId) {
-          return { ...c, loading: false, content: rawOutput, svg: renderedSvg };
-        }
-        return c;
-      }));
+      updateSavedCard(cardId, { loading: false, content: rawOutput, svg: renderedSvg });
     } catch (err) {
       console.error('AI Request Error:', err);
-      setCards(prev => prev.map(c => {
-        if (c.id === cardId) {
-          return { ...c, loading: false, content: 'Ошибка при вызове ИИ: ' + err.message };
-        }
-        return c;
-      }));
+      updateSavedCard(cardId, { loading: false, content: 'Ошибка при вызове ИИ: ' + err.message });
     }
   };
 
@@ -429,11 +412,13 @@ ${currentSectionText.slice(0, 12000)}
   };
 
   const removeCard = (id) => {
-    setCards(prev => prev.filter(c => c.id !== id));
+    deleteSavedCard(id);
   };
 
   const [customText, setCustomText] = useState('');
   const [showInput, setShowInput] = useState(false);
+
+  const cards = savedCards;
 
   return (
     <aside 
@@ -495,7 +480,7 @@ ${currentSectionText.slice(0, 12000)}
               </button>
               {cards.length > 0 && (
                 <button 
-                  onClick={() => setCards([])}
+                  onClick={() => clearSavedCards()}
                   className="text-xs text-textDim hover:text-red-400 transition-colors px-1 cursor-pointer"
                   title="Очистить все карточки"
                 >

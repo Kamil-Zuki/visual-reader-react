@@ -126,7 +126,12 @@ export const useStore = create((set) => ({
     delete updatedUnmarked[`${bookId}__${sectionId}`];
     setStoreValue('ddia_read_sections', updated);
     setStoreValue('ddia_unmarked_sections', updatedUnmarked);
-    return { readSections: updated, unmarkedSections: updatedUnmarked };
+    // Log reading activity for today
+    const today = new Date().toISOString().slice(0, 10);
+    const currentLog = useStore.getState().readingLog || {};
+    const updatedLog = { ...currentLog, [today]: (currentLog[today] || 0) + 1 };
+    setStoreValue('ddia_reading_log', updatedLog);
+    return { readSections: updated, unmarkedSections: updatedUnmarked, readingLog: updatedLog };
   }),
   unmarkSectionAsRead: (bookId, sectionId) => set((state) => {
     const bookRead = state.readSections[bookId] || [];
@@ -319,6 +324,48 @@ export const useStore = create((set) => ({
     return { flashcards: updated };
   }),
 
+  // --- Saved AI Cards (Phase 3.1) ---
+  savedCards: [],
+  deletedCards: {}, // { [id]: timestamp }
+  addSavedCard: (card) => set((state) => {
+    const cardWithTime = { ...card, updatedAt: card.updatedAt || Date.now() };
+    const updatedDeleted = { ...(state.deletedCards || {}) };
+    delete updatedDeleted[cardWithTime.id];
+    const updated = [cardWithTime, ...state.savedCards.filter(c => c.id !== cardWithTime.id)];
+    setStoreValue('ddia_saved_cards', updated);
+    setStoreValue('ddia_deleted_cards', updatedDeleted);
+    return { savedCards: updated, deletedCards: updatedDeleted };
+  }),
+  deleteSavedCard: (id) => set((state) => {
+    const updated = state.savedCards.filter(c => c.id !== id);
+    const updatedDeleted = { ...(state.deletedCards || {}), [id]: Date.now() };
+    setStoreValue('ddia_saved_cards', updated);
+    setStoreValue('ddia_deleted_cards', updatedDeleted);
+    return { savedCards: updated, deletedCards: updatedDeleted };
+  }),
+  clearSavedCards: () => set(() => {
+    setStoreValue('ddia_saved_cards', []);
+    return { savedCards: [] };
+  }),
+  updateSavedCard: (id, fields) => set((state) => {
+    const updated = state.savedCards.map(c => c.id === id ? { ...c, ...fields, updatedAt: Date.now() } : c);
+    setStoreValue('ddia_saved_cards', updated);
+    return { savedCards: updated };
+  }),
+
+  // --- Reading Activity Log (Phase 3.2) ---
+  readingLog: {}, // { 'YYYY-MM-DD': count }
+  logReadingActivity: (date) => set((state) => {
+    const key = date || new Date().toISOString().slice(0, 10);
+    const updated = { ...state.readingLog, [key]: (state.readingLog[key] || 0) + 1 };
+    setStoreValue('ddia_reading_log', updated);
+    return { readingLog: updated };
+  }),
+
+  // --- Stats Modal ---
+  isStatsOpen: false,
+  setStatsOpen: (isOpen) => set({ isStatsOpen: isOpen }),
+
   // --- Glossary (Phase 2.3) ---
   isGlossaryOpen: false,
   setGlossaryOpen: (isOpen) => set({ isGlossaryOpen: isOpen }),
@@ -422,7 +469,10 @@ export async function initStoreFromDB() {
     chatHistories,
     quizResults,
     flashcards,
-    glossary
+    glossary,
+    savedCards,
+    deletedCards,
+    readingLog
   ] = await Promise.all([
     getStoreValue('openrouter_api_key', ''),
     getStoreValue('openrouter_model', 'openrouter/free'),
@@ -445,7 +495,10 @@ export async function initStoreFromDB() {
     getStoreValue('ddia_chat_histories', {}),
     getStoreValue('ddia_quiz_results', {}),
     getStoreValue('ddia_flashcards', {}),
-    getStoreValue('ddia_glossary', {})
+    getStoreValue('ddia_glossary', {}),
+    getStoreValue('ddia_saved_cards', []),
+    getStoreValue('ddia_deleted_cards', {}),
+    getStoreValue('ddia_reading_log', {})
   ]);
 
   const defaultSyncSettings = {
@@ -486,7 +539,24 @@ export async function initStoreFromDB() {
     chatHistories: chatHistories || {},
     quizResults: quizResults || {},
     flashcards: flashcards || {},
-    glossary: glossary || {}
+    glossary: glossary || {},
+    savedCards: Array.isArray(savedCards) ? savedCards : [],
+    deletedCards: deletedCards || {},
+    readingLog: readingLog || {}
   });
+
+  // Migrate old localStorage-only saved cards if the store is empty
+  try {
+    const migrateRaw = localStorage.getItem('ddia_saved_cards');
+    if (migrateRaw) {
+      const migrated = JSON.parse(migrateRaw);
+      if (Array.isArray(migrated) && migrated.length > 0 && useStore.getState().savedCards.length === 0) {
+        const withTime = migrated.map(c => ({ ...c, updatedAt: c.updatedAt || Date.now() }));
+        setStoreValue('ddia_saved_cards', withTime);
+        useStore.setState({ savedCards: withTime });
+        localStorage.removeItem('ddia_saved_cards');
+      }
+    }
+  } catch (_) { /* ignore */ }
 }
 

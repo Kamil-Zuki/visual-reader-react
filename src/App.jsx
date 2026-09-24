@@ -20,6 +20,7 @@ import {
   Search,
   Layers,
   BookMarked,
+  BarChart2,
   Award
 } from 'lucide-react';
 
@@ -35,6 +36,7 @@ import SearchModal from './components/SearchModal';
 import QuizModal from './components/QuizModal';
 import FlashcardModal from './components/FlashcardModal';
 import GlossaryModal from './components/GlossaryModal';
+import StatsModal from './components/StatsModal';
 import PanelResizer from './components/PanelResizer';
 import { initSyncServiceFromSettings, connectSync } from './services/supabaseSyncService';
 
@@ -43,7 +45,7 @@ function App() {
     currentBook, setCurrentBook, currentBookId,
     setLibraryOpen, setSettingsOpen, setNotesOpen, setGraphOpen, apiKey,
     setSearchOpen,
-    setFlashcardsOpen, setGlossaryOpen, flashcards,
+    setFlashcardsOpen, setGlossaryOpen, setStatsOpen, flashcards,
     mobileTab, setMobileTab,
     isSidebarOpen, toggleSidebar, setSidebarOpen, setSidebarWidth,
     isInspectorOpen, toggleInspector, setInspectorOpen, setInspectorWidth,
@@ -294,6 +296,16 @@ function App() {
             <span className="hidden sm:inline">Глоссарий</span>
           </button>
 
+          {/* Stats / Progress Dashboard Button */}
+          <button
+            onClick={() => setStatsOpen(true)}
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+            title="Статистика чтения и прогресс"
+          >
+            <BarChart2 size={14} className="text-violet-400" />
+            <span className="hidden sm:inline">Прогресс</span>
+          </button>
+
           {/* Supabase Cloud Sync Status Button */}
           <button
             onClick={() => setSyncModalOpen(true)}
@@ -471,6 +483,7 @@ function App() {
       <QuizModal />
       <FlashcardModal />
       <GlossaryModal />
+      <StatsModal />
       <LibraryModal />
       <SettingsModal />
       <NotesModal />

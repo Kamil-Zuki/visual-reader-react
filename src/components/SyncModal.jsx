@@ -63,6 +63,10 @@ export default function SyncModal() {
     highlights,
     readSections,
     customCommands,
+    savedCards,
+    flashcards,
+    glossary,
+    currentBookId,
     apiKey
   } = useStore();
 
@@ -125,6 +129,9 @@ export default function SyncModal() {
   const totalBookmarks = Object.values(bookmarks || {}).reduce((acc, list) => acc + (list?.length || 0), 0);
   const totalHighlights = Object.values(highlights || {}).reduce((acc, list) => acc + (list?.length || 0), 0);
   const totalRead = Object.values(readSections || {}).reduce((acc, list) => acc + (list?.length || 0), 0);
+  const totalAiCards = (savedCards || []).length;
+  const totalFlashcards = Object.values(flashcards || {}).reduce((acc, list) => acc + (list?.length || 0), 0);
+  const totalGlossary = Object.values(glossary || {}).reduce((acc, list) => acc + (list?.length || 0), 0);
 
   const handleToggleSync = async () => {
     const nextState = !enabled;
@@ -555,6 +562,9 @@ export default function SyncModal() {
             <span>Выделений: <strong className="text-white">{totalHighlights}</strong></span>
             <span>Прочитано: <strong className="text-white">{totalRead}</strong></span>
             <span>Команд ИИ: <strong className="text-white">{customCommands?.length || 0}</strong></span>
+            <span>АИ-карточки: <strong className="text-primaryGlow">{totalAiCards}</strong></span>
+            <span>Флешкарты: <strong className="text-primaryGlow">{totalFlashcards}</strong></span>
+            <span>Глоссарий: <strong className="text-primaryGlow">{totalGlossary}</strong></span>
             <span>OpenRouter: <strong className={apiKey ? "text-accentEmerald" : "text-amber-400"}>{apiKey ? 'Подключен' : 'Не задан'}</strong></span>
           </div>
 
