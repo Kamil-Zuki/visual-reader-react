@@ -13,6 +13,10 @@ export default function Sidebar() {
     setSidebarOpen,
     readSections,
     bookmarks,
+    highlights,
+    savedCards,
+    glossary,
+    flashcards,
     quizResults
   } = useStore();
   const [expandedChapters, setExpandedChapters] = useState(new Set([0]));
@@ -58,6 +62,9 @@ export default function Sidebar() {
 
   const bookReadSections = readSections[currentBookId] || [];
   const bookBookmarks = bookmarks[currentBookId] || [];
+  const bookHighlights = highlights[currentBookId] || [];
+  const bookFlashcards = flashcards[currentBookId] || [];
+  const bookGlossary = glossary[currentBookId] || [];
   const totalSections = chapters.reduce((acc, chap) => acc + (chap.sections?.length || 0), 0);
   const readCount = bookReadSections.length;
   const progressPercent = totalSections === 0 ? 0 : Math.round((readCount / totalSections) * 100);
@@ -222,6 +229,16 @@ export default function Sidebar() {
                       const isSecActive = isActive && activeSectionIdx === sIdx;
                       const isRead = bookReadSections.includes(sec.id);
                       const quiz = quizResults[currentBookId]?.[sec.id];
+
+                      // TOC knowledge-map indicators
+                      const hasBookmark = bookBookmarks.some(b => b.chapterIdx === cIdx && b.sectionIdx === sIdx);
+                      const secHighlights = bookHighlights.filter(h => h.chapterIdx === cIdx && h.sectionIdx === sIdx);
+                      const hasHighlight = secHighlights.length > 0;
+                      const hasNote = secHighlights.some(h => h.note && h.note.trim());
+                      const hasAiCard = savedCards.some(c => c.chapterIdx === cIdx && c.sectionIdx === sIdx);
+                      const hasFlashcard = bookFlashcards.some(c => c.chapterIdx === cIdx && c.sectionIdx === sIdx);
+                      const hasGlossary = bookGlossary.some(t => t.chapterIdx === cIdx && t.sectionIdx === sIdx);
+
                       return (
                         <div 
                           key={sIdx}
@@ -238,21 +255,31 @@ export default function Sidebar() {
                               </div>
                             )}
                           </div>
-                          <span className={`leading-snug flex-1 ${isRead && !isSecActive ? 'text-textDim' : ''}`}>{sec.title}</span>
-                          {quiz && (
-                            <span 
-                              className={`shrink-0 text-[10px] font-mono px-1.5 py-0.2 rounded-full border ${
-                                quiz.percentage >= 80 
-                                  ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' 
-                                  : quiz.percentage >= 50 
-                                    ? 'border-amber-500/40 text-amber-400 bg-amber-500/10' 
-                                    : 'border-red-500/40 text-red-400 bg-red-500/10'
-                              }`}
-                              title={`Квиз: ${quiz.score}/${quiz.total} (${quiz.percentage}%)`}
-                            >
-                              {quiz.percentage}%
-                            </span>
-                          )}
+                          <span className={`leading-snug flex-1 min-w-0 truncate ${isRead && !isSecActive ? 'text-textDim' : ''}`}>{sec.title}</span>
+
+                          {/* TOC Indicators strip */}
+                          <div className="flex items-center gap-0.5 shrink-0 ml-auto">
+                            {hasBookmark && <span title="Закладка" className="text-[11px] leading-none">🔖</span>}
+                            {hasHighlight && <span title={`${secHighlights.length} выделений`} className="text-[11px] leading-none">🎨</span>}
+                            {hasNote && <span title="Есть заметки к выделениям" className="text-[11px] leading-none">📝</span>}
+                            {hasAiCard && <span title="Есть AI-карточки" className="text-[11px] leading-none">🤖</span>}
+                            {hasFlashcard && <span title="Есть флешкарты" className="text-[11px] leading-none">🎴</span>}
+                            {hasGlossary && <span title="Есть термины в глоссарии" className="text-[11px] leading-none">📚</span>}
+                            {quiz && (
+                              <span 
+                                className={`text-[10px] font-mono px-1.5 py-0.2 rounded-full border ml-0.5 ${
+                                  quiz.percentage >= 80 
+                                    ? 'border-emerald-500/40 text-emerald-400 bg-emerald-500/10' 
+                                    : quiz.percentage >= 50 
+                                      ? 'border-amber-500/40 text-amber-400 bg-amber-500/10' 
+                                      : 'border-red-500/40 text-red-400 bg-red-500/10'
+                                }`}
+                                title={`Квиз: ${quiz.score}/${quiz.total} (${quiz.percentage}%)`}
+                              >
+                                {quiz.percentage}%
+                              </span>
+                            )}
+                          </div>
                         </div>
                       );
                     })}
