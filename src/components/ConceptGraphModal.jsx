@@ -88,10 +88,10 @@ export default function ConceptGraphModal() {
             </div>
           </div>
 
-          <div className="flex-1 overflow-auto p-6 bg-[#0a0d14] flex items-center justify-center custom-scrollbar">
+          <div className="flex-1 overflow-auto p-6 bg-[#0a0d14] flex custom-scrollbar">
             {svg ? (
               <div 
-                className="w-full h-full flex items-center justify-center cursor-zoom-in"
+                className="m-auto flex items-center justify-center cursor-zoom-in [&_svg]:max-w-full [&_svg]:h-auto"
                 onClick={() => setFullscreen(true)}
                 dangerouslySetInnerHTML={{ __html: svg }} 
               />

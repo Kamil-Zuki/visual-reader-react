@@ -428,9 +428,18 @@ export default function AIInspector() {
                 {(card.isDiagram || card.type === 'diagram') && card.svg ? (
                   <div 
                     onClick={() => setFullscreenDiagram({ isOpen: true, svg: card.svg, title: card.quote })}
-                    className="overflow-hidden bg-[#0a0d14] p-3 rounded-lg cursor-pointer border border-white/5 hover:border-primary/40 transition-colors flex items-center justify-center"
-                    dangerouslySetInnerHTML={{ __html: card.svg }}
-                  />
+                    className="relative overflow-hidden bg-[#0a0d14] p-3 rounded-lg cursor-pointer border border-white/5 hover:border-primary/40 transition-colors flex items-center justify-center max-h-72 group/diag"
+                  >
+                    <div 
+                      className="w-full flex items-center justify-center pointer-events-none [&_svg]:max-w-full [&_svg]:h-auto"
+                      dangerouslySetInnerHTML={{ __html: card.svg }} 
+                    />
+                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-transparent to-transparent opacity-0 group-hover/diag:opacity-100 transition-opacity flex items-end justify-center pb-2">
+                      <span className="text-[11px] bg-primary/90 text-white font-medium px-2.5 py-1 rounded-full shadow-lg flex items-center gap-1.5 backdrop-blur-sm">
+                        <Maximize2 size={12} /> На весь экран (интерактивно)
+                      </span>
+                    </div>
+                  </div>
                 ) : (
                   <div className="text-xs text-textMain leading-relaxed whitespace-pre-wrap">
                     {card.content}

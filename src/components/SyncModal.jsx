@@ -62,6 +62,7 @@ export default function SyncModal() {
     bookmarks,
     highlights,
     readSections,
+    customCommands,
     apiKey
   } = useStore();
 
@@ -290,7 +291,7 @@ export default function SyncModal() {
                   Supabase Cloud
                 </span>
               </h2>
-              <p className="text-xs text-textMuted">Надёжная синхронизация закладок и заметок через ваше облако</p>
+              <p className="text-xs text-textMuted">Синхронизация закладок, заметок и ИИ-команд через ваше облако</p>
             </div>
           </div>
           <button 
@@ -553,6 +554,7 @@ export default function SyncModal() {
             <span>Закладок: <strong className="text-white">{totalBookmarks}</strong></span>
             <span>Выделений: <strong className="text-white">{totalHighlights}</strong></span>
             <span>Прочитано: <strong className="text-white">{totalRead}</strong></span>
+            <span>Команд ИИ: <strong className="text-white">{customCommands?.length || 0}</strong></span>
             <span>OpenRouter: <strong className={apiKey ? "text-accentEmerald" : "text-amber-400"}>{apiKey ? 'Подключен' : 'Не задан'}</strong></span>
           </div>
 

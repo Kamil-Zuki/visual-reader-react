@@ -85,7 +85,8 @@ export default function Reader() {
     addHighlight,
     pendingScrollHighlightId,
     setPendingScrollHighlightId,
-    setNotesOpen
+    setNotesOpen,
+    setInspectorOpen
   } = useStore();
   const contentRef = useRef(null);
   const [selectionRange, setSelectionRange] = useState(null);
@@ -332,8 +333,11 @@ export default function Reader() {
               <div className="w-px h-8 bg-white/10 mx-1"></div>
               
               <button 
-                onClick={() => setMobileTab('ai')}
-                className="flex-1 py-1.5 px-3 rounded-lg bg-gradient-to-r from-primary to-accentPurple text-white text-xs font-semibold shadow-lg shadow-primary/20 flex items-center justify-center gap-1.5 border border-white/20"
+                onClick={() => {
+                  setMobileTab('ai');
+                  setInspectorOpen(true);
+                }}
+                className="flex-1 py-1.5 px-3 rounded-lg bg-gradient-to-r from-primary to-accentPurple text-white text-xs font-semibold shadow-lg shadow-primary/20 flex items-center justify-center gap-1.5 border border-white/20 cursor-pointer hover:brightness-110 transition-all"
               >
                 <Sparkles size={14} /> ИИ
               </button>

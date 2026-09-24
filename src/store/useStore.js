@@ -64,18 +64,32 @@ export const useStore = create((set) => ({
   aiResult: null,
   setAiResult: (result) => set({ aiResult: result }),
 
-  // --- Custom Commands (Stored in DB) ---
+  // --- Custom Commands (Cached in LocalStorage, Synced via Supabase) ---
   customCommands: [],
+  deletedCommands: {},
   addCustomCommand: async (command) => {
-    await saveCommandToDB(command);
-    set((state) => ({ customCommands: [...state.customCommands, command] }));
+    const cmdWithTime = {
+      ...command,
+      createdAt: command.createdAt || Date.now(),
+      updatedAt: Date.now()
+    };
+    await saveCommandToDB(cmdWithTime);
+    set((state) => {
+      const updatedDeleted = { ...(state.deletedCommands || {}) };
+      delete updatedDeleted[cmdWithTime.id];
+      setStoreValue('ddia_deleted_commands', updatedDeleted);
+      return { 
+        customCommands: [...state.customCommands.filter(c => c.id !== cmdWithTime.id), cmdWithTime],
+        deletedCommands: updatedDeleted
+      };
+    });
   },
   updateCustomCommand: async (id, updatedFields) => {
     let updatedCmd = null;
     const current = useStore.getState().customCommands;
     const updated = current.map(c => {
       if (c.id === id) {
-        updatedCmd = { ...c, ...updatedFields };
+        updatedCmd = { ...c, ...updatedFields, updatedAt: Date.now() };
         return updatedCmd;
       }
       return c;
@@ -85,11 +99,19 @@ export const useStore = create((set) => ({
   },
   deleteCustomCommand: async (id) => {
     await deleteCommandFromDB(id);
-    set((state) => ({ customCommands: state.customCommands.filter(c => c.id !== id) }));
+    set((state) => {
+      const updatedDeleted = { ...(state.deletedCommands || {}), [id]: Date.now() };
+      setStoreValue('ddia_deleted_commands', updatedDeleted);
+      return { 
+        customCommands: state.customCommands.filter(c => c.id !== id),
+        deletedCommands: updatedDeleted
+      };
+    });
   },
   resetCustomCommands: async () => {
     const resetList = await resetCustomCommandsInDB();
-    set({ customCommands: resetList });
+    setStoreValue('ddia_deleted_commands', {});
+    set({ customCommands: resetList, deletedCommands: {} });
     return resetList;
   },
 
@@ -241,6 +263,7 @@ export async function initStoreFromDB() {
     apiKey, model, language, promptsData, activeBookId,
     readSections, bookmarks, highlights,
     deletedHighlights, deletedBookmarks, unmarkedSections,
+    deletedCommands,
     sidebarOpen, inspectorOpen, sidebarWidth, inspectorWidth,
     supabaseSyncSettings, p2pSyncSettings
   ] = await Promise.all([
@@ -255,6 +278,7 @@ export async function initStoreFromDB() {
     getStoreValue('ddia_deleted_highlights', {}),
     getStoreValue('ddia_deleted_bookmarks', {}),
     getStoreValue('ddia_unmarked_sections', {}),
+    getStoreValue('ddia_deleted_commands', {}),
     getStoreValue('ddia_sidebar_open', true),
     getStoreValue('ddia_inspector_open', true),
     getStoreValue('ddia_sidebar_width', 300),
@@ -287,6 +311,7 @@ export async function initStoreFromDB() {
     apiKey, model, language, 
     prompts: promptsData?.systemPrompts || {},
     customCommands: promptsData?.customCommands || [],
+    deletedCommands: deletedCommands || {},
     currentBookId: activeBookId,
     readSections, bookmarks, highlights,
     deletedHighlights: deletedHighlights || {},

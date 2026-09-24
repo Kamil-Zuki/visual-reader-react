@@ -1,6 +1,6 @@
 import { createClient } from '@supabase/supabase-js';
 import { useStore } from '../store/useStore';
-import { setStoreValue } from '../utils/db';
+import { setStoreValue, saveSystemPromptsToDB } from '../utils/db';
 
 let supabase = null;
 let realtimeChannel = null;
@@ -161,6 +161,9 @@ export async function pushLocalData(syncKey) {
     deletedHighlights: state.deletedHighlights || {},
     deletedBookmarks: state.deletedBookmarks || {},
     unmarkedSections: state.unmarkedSections || {},
+    prompts: state.prompts || {},
+    customCommands: state.customCommands || [],
+    deletedCommands: state.deletedCommands || {},
     apiKey: state.apiKey || '',
     model: state.model || 'openrouter/free',
     language: state.language || 'ru',
@@ -303,7 +306,48 @@ export async function mergeRemoteIntoLocal(remoteData) {
       });
     }
 
-    // 4. Merge OpenRouter settings (apiKey, model, language)
+    // 4. Merge Prompts & Custom Commands
+    const localDeletedCmd = state.deletedCommands || {};
+    const remoteDeletedCmd = remoteData.deletedCommands || {};
+    const mergedDeletedCmd = { ...localDeletedCmd };
+    for (const [k, v] of Object.entries(remoteDeletedCmd)) {
+      mergedDeletedCmd[k] = Math.max(mergedDeletedCmd[k] || 0, v || 0);
+    }
+
+    const localPrompts = state.prompts || {};
+    const remotePrompts = remoteData.prompts || {};
+    const mergedPrompts = { ...localPrompts, ...remotePrompts };
+
+    const localCommands = state.customCommands || [];
+    const remoteCommands = remoteData.customCommands || [];
+    const cmdMap = new Map();
+
+    localCommands.forEach(cmd => {
+      const delTime = mergedDeletedCmd[cmd.id] || 0;
+      const cmdTime = cmd.updatedAt || cmd.createdAt || 0;
+      if (!delTime || cmdTime > delTime) {
+        cmdMap.set(cmd.id, cmd);
+      }
+    });
+
+    remoteCommands.forEach(cmd => {
+      const delTime = mergedDeletedCmd[cmd.id] || 0;
+      const cmdTime = cmd.updatedAt || cmd.createdAt || 0;
+      if (!delTime || cmdTime > delTime) {
+        if (!cmdMap.has(cmd.id)) {
+          cmdMap.set(cmd.id, cmd);
+        } else {
+          const existing = cmdMap.get(cmd.id);
+          const existingTime = existing.updatedAt || existing.createdAt || 0;
+          if (cmdTime > existingTime) {
+            cmdMap.set(cmd.id, { ...existing, ...cmd });
+          }
+        }
+      }
+    });
+    const mergedCustomCommands = Array.from(cmdMap.values());
+
+    // 5. Merge OpenRouter settings (apiKey, model, language)
     const storeUpdates = {
       bookmarks: mergedBookmarks,
       highlights: mergedHighlights,
@@ -311,6 +355,9 @@ export async function mergeRemoteIntoLocal(remoteData) {
       deletedHighlights: mergedDeletedH,
       deletedBookmarks: mergedDeletedB,
       unmarkedSections: mergedUnmarked,
+      prompts: mergedPrompts,
+      customCommands: mergedCustomCommands,
+      deletedCommands: mergedDeletedCmd,
       lastSyncedAt: new Date().toISOString()
     };
 
@@ -320,8 +367,22 @@ export async function mergeRemoteIntoLocal(remoteData) {
       setStoreValue('ddia_read_sections', mergedReadSections),
       setStoreValue('ddia_deleted_highlights', mergedDeletedH),
       setStoreValue('ddia_deleted_bookmarks', mergedDeletedB),
-      setStoreValue('ddia_unmarked_sections', mergedUnmarked)
+      setStoreValue('ddia_unmarked_sections', mergedUnmarked),
+      setStoreValue('ddia_deleted_commands', mergedDeletedCmd),
+      saveSystemPromptsToDB(mergedPrompts)
     ];
+
+    try {
+      const mirrorList = [
+        ...Object.entries(mergedPrompts).map(([k, val]) => ({
+          id: `system_${k}`, category: 'system', key: k, title: k, prompt: val, type: k === 'diagram' ? 'diagram' : 'text', isDefault: 0
+        })),
+        ...mergedCustomCommands.map(c => ({ ...c, category: 'custom', key: c.id }))
+      ];
+      localStorage.setItem('app_prompts', JSON.stringify(mirrorList));
+    } catch (e) {
+      console.warn('[SupabaseSync] LocalStorage cache update warning:', e);
+    }
 
     // If remote has an API key and local doesn't (or remote key is newer), sync it
     if (remoteData.apiKey && remoteData.apiKey.trim()) {
@@ -418,6 +479,9 @@ function setupStoreAutoSync(syncKey) {
   let prevDeletedH = useStore.getState().deletedHighlights;
   let prevDeletedB = useStore.getState().deletedBookmarks;
   let prevUnmarked = useStore.getState().unmarkedSections;
+  let prevPrompts = useStore.getState().prompts;
+  let prevCommands = useStore.getState().customCommands;
+  let prevDeletedCmd = useStore.getState().deletedCommands;
   let prevApiKey = useStore.getState().apiKey;
   let prevModel = useStore.getState().model;
 
@@ -431,6 +495,9 @@ function setupStoreAutoSync(syncKey) {
     const dhChanged = state.deletedHighlights !== prevDeletedH;
     const dbChanged = state.deletedBookmarks !== prevDeletedB;
     const unChanged = state.unmarkedSections !== prevUnmarked;
+    const pChanged = state.prompts !== prevPrompts;
+    const cChanged = state.customCommands !== prevCommands;
+    const dcChanged = state.deletedCommands !== prevDeletedCmd;
     const kChanged = state.apiKey !== prevApiKey;
     const mChanged = state.model !== prevModel;
 
@@ -440,10 +507,13 @@ function setupStoreAutoSync(syncKey) {
     prevDeletedH = state.deletedHighlights;
     prevDeletedB = state.deletedBookmarks;
     prevUnmarked = state.unmarkedSections;
+    prevPrompts = state.prompts;
+    prevCommands = state.customCommands;
+    prevDeletedCmd = state.deletedCommands;
     prevApiKey = state.apiKey;
     prevModel = state.model;
 
-    if (bChanged || hChanged || rChanged || dhChanged || dbChanged || unChanged || kChanged || mChanged) {
+    if (bChanged || hChanged || rChanged || dhChanged || dbChanged || unChanged || pChanged || cChanged || dcChanged || kChanged || mChanged) {
       if (debounceTimeout) clearTimeout(debounceTimeout);
 
       useStore.setState({ syncStatus: 'syncing' });
