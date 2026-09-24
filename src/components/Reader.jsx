@@ -85,6 +85,8 @@ export default function Reader() {
     addHighlight,
     pendingScrollHighlightId,
     setPendingScrollHighlightId,
+    pendingSearchScroll,
+    setPendingSearchScroll,
     setNotesOpen,
     setInspectorOpen
   } = useStore();
@@ -156,12 +158,63 @@ export default function Reader() {
             setPendingScrollHighlightId(null);
           }, 80);
         });
+      } else if (pendingSearchScroll) {
+        const textToFind = pendingSearchScroll.snippet || pendingSearchScroll.query;
+        requestAnimationFrame(() => {
+          setTimeout(() => {
+            let found = false;
+            try {
+              if (contentRef.current && textToFind && textToFind.length >= 2) {
+                const walker = document.createTreeWalker(contentRef.current, NodeFilter.SHOW_TEXT, null, false);
+                const searchLower = textToFind.toLowerCase();
+                let node;
+                while ((node = walker.nextNode())) {
+                  const idx = node.nodeValue.toLowerCase().indexOf(searchLower);
+                  if (idx !== -1) {
+                    const parent = node.parentElement;
+                    if (parent && !parent.classList.contains('search-match-pulse')) {
+                      const range = document.createRange();
+                      range.setStart(node, idx);
+                      range.setEnd(node, idx + textToFind.length);
+                      const span = document.createElement('span');
+                      span.className = 'search-match-pulse';
+                      span.style.backgroundColor = 'rgba(99, 102, 241, 0.45)';
+                      span.style.border = '2px solid #818cf8';
+                      span.style.borderRadius = '4px';
+                      span.style.boxShadow = '0 0 16px rgba(99, 102, 241, 0.9)';
+                      span.style.padding = '1px 4px';
+                      span.style.transition = 'all 0.5s ease';
+                      range.surroundContents(span);
+                      span.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                      setTimeout(() => {
+                        if (span.parentNode) {
+                          span.style.boxShadow = 'none';
+                          span.style.backgroundColor = 'rgba(99, 102, 241, 0.2)';
+                          span.style.borderColor = 'rgba(99, 102, 241, 0.4)';
+                        }
+                      }, 3000);
+                      found = true;
+                      break;
+                    }
+                  }
+                }
+              }
+            } catch (err) {
+              console.warn('[Reader] Search highlight error:', err);
+            }
+
+            if (!found && contentRef.current?.parentElement) {
+              contentRef.current.parentElement.scrollTop = 0;
+            }
+            setPendingSearchScroll(null);
+          }, 80);
+        });
       } else if (contentRef.current.parentElement) {
         // Scroll to top when section changes normally
         contentRef.current.parentElement.scrollTop = 0;
       }
     }
-  }, [currentBook, activeChapterIdx, activeSectionIdx, section, highlights, currentBookId, pendingScrollHighlightId]);
+  }, [currentBook, activeChapterIdx, activeSectionIdx, section, highlights, currentBookId, pendingScrollHighlightId, pendingSearchScroll]);
 
   // Check selection for floating toolbar
   useEffect(() => {

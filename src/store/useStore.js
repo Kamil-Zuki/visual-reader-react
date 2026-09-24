@@ -201,6 +201,29 @@ export const useStore = create((set) => ({
   isGraphOpen: false,
   setGraphOpen: (isOpen) => set({ isGraphOpen: isOpen }),
 
+  // --- Full-text Book Search ---
+  isSearchOpen: false,
+  setSearchOpen: (isOpen) => set({ isSearchOpen: isOpen }),
+  pendingSearchScroll: null,
+  setPendingSearchScroll: (scrollData) => set({ pendingSearchScroll: scrollData }),
+
+  // --- AI Inspector Mode & Chat Histories ---
+  aiInspectorTab: 'cards', // 'cards' | 'chat'
+  setAiInspectorTab: (tab) => set({ aiInspectorTab: tab }),
+  chatHistories: {}, // key: `${bookId}_${cIdx}_${sIdx}` -> array of { id, role, content, timestamp }
+  addChatMessage: (key, message) => set((state) => {
+    const list = state.chatHistories[key] || [];
+    const updated = { ...state.chatHistories, [key]: [...list, message] };
+    setStoreValue('ddia_chat_histories', updated);
+    return { chatHistories: updated };
+  }),
+  clearChatHistory: (key) => set((state) => {
+    const updated = { ...state.chatHistories };
+    delete updated[key];
+    setStoreValue('ddia_chat_histories', updated);
+    return { chatHistories: updated };
+  }),
+
   // --- Supabase Cloud Sync State ---
   isSyncModalOpen: false,
   setSyncModalOpen: (isOpen) => set({ isSyncModalOpen: isOpen }),
@@ -265,7 +288,8 @@ export async function initStoreFromDB() {
     deletedHighlights, deletedBookmarks, unmarkedSections,
     deletedCommands,
     sidebarOpen, inspectorOpen, sidebarWidth, inspectorWidth,
-    supabaseSyncSettings, p2pSyncSettings
+    supabaseSyncSettings, p2pSyncSettings,
+    chatHistories
   ] = await Promise.all([
     getStoreValue('openrouter_api_key', ''),
     getStoreValue('openrouter_model', 'openrouter/free'),
@@ -284,7 +308,8 @@ export async function initStoreFromDB() {
     getStoreValue('ddia_sidebar_width', 300),
     getStoreValue('ddia_inspector_width', 420),
     getStoreValue('supabase_sync_settings', null),
-    getStoreValue('p2p_sync_settings', null)
+    getStoreValue('p2p_sync_settings', null),
+    getStoreValue('ddia_chat_histories', {})
   ]);
 
   const defaultSyncSettings = {
@@ -321,7 +346,8 @@ export async function initStoreFromDB() {
     isInspectorOpen: inspectorOpen !== false && inspectorOpen !== 'false',
     sidebarWidth: parseInt(sidebarWidth, 10) || 300,
     inspectorWidth: parseInt(inspectorWidth, 10) || 420,
-    syncSettings: resolvedSyncSettings
+    syncSettings: resolvedSyncSettings,
+    chatHistories: chatHistories || {}
   });
 }
 

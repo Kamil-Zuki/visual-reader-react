@@ -16,7 +16,8 @@ import {
   PanelRightOpen,
   PenTool,
   Network,
-  Cloud
+  Cloud,
+  Search
 } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
@@ -27,6 +28,7 @@ import SettingsModal from './components/SettingsModal';
 import NotesModal from './components/NotesModal';
 import ConceptGraphModal from './components/ConceptGraphModal';
 import SyncModal from './components/SyncModal';
+import SearchModal from './components/SearchModal';
 import PanelResizer from './components/PanelResizer';
 import { initSyncServiceFromSettings, connectSync } from './services/supabaseSyncService';
 
@@ -34,6 +36,7 @@ function App() {
   const {
     currentBook, setCurrentBook,
     setLibraryOpen, setSettingsOpen, setNotesOpen, setGraphOpen, apiKey,
+    setSearchOpen,
     mobileTab, setMobileTab,
     isSidebarOpen, toggleSidebar, setSidebarOpen, setSidebarWidth,
     isInspectorOpen, toggleInspector, setInspectorOpen, setInspectorWidth,
@@ -43,7 +46,7 @@ function App() {
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
 
-  // Keyboard shortcuts: Ctrl+B (sidebar), Ctrl+I (inspector)
+  // Keyboard shortcuts: Ctrl+B (sidebar), Ctrl+I (inspector), Ctrl+K / Ctrl+F (search)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'TEXTAREA'].includes(e.target.tagName)) return;
@@ -56,10 +59,14 @@ function App() {
         e.preventDefault();
         toggleInspector();
       }
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'k' || e.key.toLowerCase() === 'f')) {
+        e.preventDefault();
+        setSearchOpen(true);
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [toggleSidebar, toggleInspector]);
+  }, [toggleSidebar, toggleInspector, setSearchOpen]);
 
   useEffect(() => {
     // Check if already in standalone PWA mode
@@ -210,6 +217,19 @@ function App() {
           >
             <PanelRight size={14} />
             <span className="hidden lg:inline">Инспектор</span>
+          </button>
+
+          {/* Full-text Book Search Button */}
+          <button
+            onClick={() => setSearchOpen(true)}
+            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 hover:border-primary/40 transition-colors cursor-pointer group"
+            title="Полнотекстовый поиск по книге (Ctrl+K или Ctrl+F)"
+          >
+            <Search size={14} className="text-primaryGlow group-hover:scale-110 transition-transform" />
+            <span className="hidden sm:inline">Поиск</span>
+            <span className="hidden xl:inline text-[10px] text-textDim font-mono bg-white/5 border border-white/10 px-1 py-0.5 rounded ml-0.5">
+              Ctrl+K
+            </span>
           </button>
 
           <button
@@ -412,6 +432,7 @@ function App() {
       </nav>
 
       {/* Modals */}
+      <SearchModal />
       <LibraryModal />
       <SettingsModal />
       <NotesModal />
