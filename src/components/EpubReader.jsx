@@ -8,7 +8,7 @@ import {
   selectEpubReaderTheme,
   epubThemeIframeBackground,
 } from '../utils/epubReaderThemes';
-import { ChevronLeft, ChevronRight, PenTool, Sparkles } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PenTool, Sparkles, Bookmark, CheckCircle2, X } from 'lucide-react';
 
 const HIGHLIGHT_COLORS = [
   { id: 'yellow', value: 'rgba(245, 158, 11, 0.45)', dotColor: '#f59e0b', label: 'Янтарный' },
@@ -25,6 +25,19 @@ function annotationStyle(color) {
   };
 }
 
+/** Снять выделение в iframe epub.js (clearSelection в API нет) */
+function clearIframeTextSelection(rendition) {
+  if (!rendition) return;
+  try {
+    const contents = rendition.getContents();
+    (Array.isArray(contents) ? contents : [contents]).forEach((c) => {
+      c?.window?.getSelection?.()?.removeAllRanges?.();
+    });
+  } catch {
+    /* ignore */
+  }
+}
+
 export default function EpubReader() {
   const {
     currentBook,
@@ -35,7 +48,11 @@ export default function EpubReader() {
     epubLocations,
     setEpubLocation,
     markSectionAsRead,
+    unmarkSectionAsRead,
     readSections,
+    bookmarks,
+    addBookmark,
+    removeBookmark,
     highlights,
     addHighlight,
     setInspectorOpen,
@@ -62,6 +79,36 @@ export default function EpubReader() {
   const chapters = currentBook?.chapters || [];
   const section = chapters[activeChapterIdx]?.sections?.[activeSectionIdx];
   const sectionId = section?.id;
+  const isRead = sectionId ? readSections[currentBookId]?.includes(sectionId) : false;
+  const bookBookmarks = bookmarks[currentBookId] || [];
+  const isBookmarked = sectionId ? bookBookmarks.some((b) => b.id === sectionId) : false;
+
+  const toggleReadStatus = () => {
+    if (!sectionId) return;
+    if (isRead) unmarkSectionAsRead(currentBookId, sectionId);
+    else markSectionAsRead(currentBookId, sectionId);
+  };
+
+  const dismissEpubSelection = useCallback(() => {
+    clearIframeTextSelection(renditionRef.current);
+    setEpubSelection(null);
+  }, []);
+
+  const toggleBookmark = () => {
+    if (!sectionId) return;
+    const chapterTitle = chapters[activeChapterIdx]?.title;
+    if (isBookmarked) {
+      removeBookmark(currentBookId, sectionId);
+    } else {
+      addBookmark(currentBookId, {
+        id: sectionId,
+        chapterIdx: activeChapterIdx,
+        sectionIdx: activeSectionIdx,
+        title: section?.title || chapterTitle,
+        timestamp: Date.now(),
+      });
+    }
+  };
 
   const applyStoredEpubHighlights = useCallback(() => {
     const rendition = renditionRef.current;
@@ -179,6 +226,22 @@ export default function EpubReader() {
 
         rendition.on('rendered', syncIframeText);
 
+        // epub.js шлёт selected, но не «снято выделение» — слушаем iframe
+        rendition.hooks.content.register((contents) => {
+          if (!contents?.document) return;
+          const onSelectionChange = () => {
+            const sel = contents.window?.getSelection?.();
+            if (!sel || sel.rangeCount === 0) {
+              setEpubSelection(null);
+              return;
+            }
+            if (sel.getRangeAt(0).collapsed) {
+              setEpubSelection(null);
+            }
+          };
+          contents.document.addEventListener('selectionchange', onSelectionChange);
+        });
+
         rendition.on('selected', (cfiRange, contents) => {
           let text = '';
           try {
@@ -218,6 +281,15 @@ export default function EpubReader() {
   }, [epubReaderTheme]);
 
   useEffect(() => {
+    if (!epubSelection) return;
+    const onKey = (e) => {
+      if (e.key === 'Escape') dismissEpubSelection();
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [epubSelection, dismissEpubSelection]);
+
+  useEffect(() => {
     applyStoredEpubHighlights();
   }, [applyStoredEpubHighlights, activeChapterIdx, activeSectionIdx]);
 
@@ -230,21 +302,19 @@ export default function EpubReader() {
       return;
     }
 
+    dismissEpubSelection();
+
     const gen = ++navGenRef.current;
     rendition.display(section.epubHref).catch((e) => {
       console.warn('[EpubReader] display href failed:', e);
     });
-
-    if (sectionId && !readSections[currentBookId]?.includes(sectionId)) {
-      markSectionAsRead(currentBookId, sectionId);
-    }
 
     return () => {
       if (gen === navGenRef.current) {
         /* noop */
       }
     };
-  }, [activeChapterIdx, activeSectionIdx, section?.epubHref]);
+  }, [activeChapterIdx, activeSectionIdx, section?.epubHref, dismissEpubSelection]);
 
   useEffect(() => {
     const rendition = renditionRef.current;
@@ -353,12 +423,17 @@ export default function EpubReader() {
         console.warn('[EpubReader] live annotation failed:', e);
       }
     }
-    setEpubSelection(null);
-    renditionRef.current?.clearSelection?.();
+    dismissEpubSelection();
   };
 
-  const goPrev = () => renditionRef.current?.prev();
-  const goNext = () => renditionRef.current?.next();
+  const goPrev = () => {
+    dismissEpubSelection();
+    renditionRef.current?.prev();
+  };
+  const goNext = () => {
+    dismissEpubSelection();
+    renditionRef.current?.next();
+  };
 
   if (!currentBook) {
     return (
@@ -374,9 +449,37 @@ export default function EpubReader() {
         <span className="text-xs text-textMuted truncate max-w-[70%]">
           {section?.title || currentBook.title}
         </span>
-        <div className="flex items-center gap-2 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {sectionId && (
+            <>
+              <button
+                type="button"
+                onClick={toggleBookmark}
+                className={`p-2 rounded-lg border transition-colors ${
+                  isBookmarked
+                    ? 'bg-primary/20 text-primaryGlow border-primary/30'
+                    : 'text-textDim border-borderColor hover:text-white hover:bg-white/5'
+                }`}
+                title={isBookmarked ? 'Удалить закладку' : 'Добавить закладку'}
+              >
+                <Bookmark size={18} className={isBookmarked ? 'fill-primaryGlow opacity-100' : 'opacity-50'} />
+              </button>
+              <button
+                type="button"
+                onClick={toggleReadStatus}
+                className={`p-2 rounded-lg border transition-colors ${
+                  isRead
+                    ? 'bg-green-500/20 text-green-400 border-green-500/30'
+                    : 'text-textDim border-borderColor hover:text-white hover:bg-white/5'
+                }`}
+                title={isRead ? 'Отметить как непрочитанное' : 'Отметить как прочитанное'}
+              >
+                <CheckCircle2 size={18} className={isRead ? 'opacity-100' : 'opacity-50'} />
+              </button>
+            </>
+          )}
           <div
-            className="hidden sm:flex items-center gap-0.5 p-0.5 rounded-lg bg-white/5 border border-white/10"
+            className="hidden md:flex items-center gap-0.5 p-0.5 rounded-lg bg-white/5 border border-white/10"
             role="group"
             aria-label="Тема чтения EPUB"
           >
@@ -422,11 +525,22 @@ export default function EpubReader() {
       />
 
       {epubSelection && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-200">
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-50 animate-in slide-in-from-bottom-5 fade-in duration-200 epub-selection-toolbar">
           <div className="bg-bgSidebar border border-borderColor shadow-2xl shadow-black rounded-2xl p-2.5 flex flex-col gap-2 w-[92vw] max-w-sm">
-            <div className="flex items-center justify-between px-1 border-b border-white/5 pb-1.5">
+            <div className="flex items-center justify-between px-1 border-b border-white/5 pb-1.5 gap-2">
               <span className="text-xs text-textMuted font-medium">Выделение в EPUB</span>
-              <span className="text-[10px] text-textDim">{epubSelection.text.length} симв.</span>
+              <div className="flex items-center gap-2">
+                <span className="text-[10px] text-textDim">{epubSelection.text.length} симв.</span>
+                <button
+                  type="button"
+                  onClick={dismissEpubSelection}
+                  className="p-1 rounded-md text-textDim hover:text-white hover:bg-white/10"
+                  title="Закрыть (Esc)"
+                  aria-label="Закрыть панель выделения"
+                >
+                  <X size={14} />
+                </button>
+              </div>
             </div>
             <div className="flex items-center justify-around gap-2">
               {HIGHLIGHT_COLORS.map((c) => (
@@ -447,7 +561,7 @@ export default function EpubReader() {
                 onClick={() => {
                   setMobileTab('ai');
                   setInspectorOpen(true);
-                  setEpubSelection(null);
+                  dismissEpubSelection();
                 }}
                 className="flex-1 py-1.5 px-2.5 rounded-lg bg-gradient-to-r from-primary to-accentPurple text-white text-xs font-semibold flex items-center justify-center gap-1.5"
               >

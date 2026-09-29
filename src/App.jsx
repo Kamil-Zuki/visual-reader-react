@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { useStore, initStoreFromDB } from './store/useStore';
-import { openDB, getBookByIdFromDB, getAllBooksFromDB } from './utils/db';
+import { openDB, getBookByIdFromDB, getAllBooksFromDB, saveBookToDB } from './utils/db';
+import { prepareEpubBookForReading } from './utils/epubImport';
 import {
   BookOpen,
   Settings,
@@ -167,6 +168,9 @@ function App() {
           loaded = all[0] || null;
         }
         if (loaded?.chapters?.length || loaded?.structure?.length) {
+          if (loaded.format === 'epub') {
+            loaded = await prepareEpubBookForReading(loaded, saveBookToDB);
+          }
           const locs = useStore.getState().epubLocations;
           if (loaded.format === 'epub' && locs[loaded.id]) {
             requestEpubResume(loaded.id);

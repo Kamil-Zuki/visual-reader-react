@@ -287,6 +287,40 @@ export async function importEpubFile(file, onProgress) {
 
 
 
+/** EPUB перед чтением: оглавление с диска и сохранение в БД при изменении id */
+export async function prepareEpubBookForReading(book, saveBookToDB) {
+  if (!book || book.format !== 'epub') return book;
+  const refreshed = await refreshEpubTocFromDisk(book);
+  if (saveBookToDB && JSON.stringify(refreshed.chapters) !== JSON.stringify(book.chapters)) {
+    await saveBookToDB(refreshed);
+  }
+  return refreshed;
+}
+
+/** Перечитать оглавление с диска (актуальные id разделов с #якорями) */
+export async function refreshEpubTocFromDisk(book) {
+  if (!book || book.format !== 'epub') return book;
+  try {
+    let bytes;
+    if (isTauriEnv() && book.id) {
+      const { readFile, BaseDirectory } = await import('@tauri-apps/plugin-fs');
+      bytes = await readFile(`books/${book.id}.epub`, { baseDir: BaseDirectory.AppData });
+    } else if (book.epubBlobUrl) {
+      const res = await fetch(book.epubBlobUrl);
+      bytes = new Uint8Array(await res.arrayBuffer());
+    } else {
+      return book;
+    }
+    const buf = bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.byteLength);
+    const parsed = await parseEpubFromZip(buf);
+    if (!parsed.chapters?.length) return book;
+    return { ...book, chapters: parsed.chapters };
+  } catch (err) {
+    console.warn('[epubImport] refreshEpubTocFromDisk:', err);
+    return book;
+  }
+}
+
 export async function resolveEpubUrl(book) {
 
   if (book.filePath && isTauriEnv()) {

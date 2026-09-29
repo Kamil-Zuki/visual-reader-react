@@ -3,7 +3,7 @@ import { useStore } from '../store/useStore';
 import { getAllBooksFromDB, saveBookToDB, deleteBookFromDB } from '../utils/db';
 import { parseHtmlBook } from '../utils/parser';
 import { parsePdfBook } from '../utils/pdfParser';
-import { importEpubFile, deleteEpubFile } from '../utils/epubImport';
+import { importEpubFile, deleteEpubFile, prepareEpubBookForReading } from '../utils/epubImport';
 import { calcBookProgressPercent, countBookSections } from '../utils/bookProgress';
 import { clearEpubSearchCache } from '../utils/epubSearchIndex';
 import { invalidateSearchCache } from '../utils/searchIndex';
@@ -58,17 +58,20 @@ export default function LibraryPanel({ layout = 'compact', showClose = false, on
     }
   };
 
-  const handleSelectBook = (book) => {
+  const handleSelectBook = async (book) => {
     const { epubLocations, requestEpubResume, clearEpubResume } = useStore.getState();
-    if (book.format === 'epub' && epubLocations[book.id]) {
-      requestEpubResume(book.id);
+    const resolved =
+      book.format === 'epub' ? await prepareEpubBookForReading(book, saveBookToDB) : book;
+    if (resolved.format === 'epub' && epubLocations[resolved.id]) {
+      requestEpubResume(resolved.id);
     } else {
       clearEpubResume();
     }
-    setCurrentBook(book, book.id);
+    setCurrentBook(resolved, resolved.id);
     setActiveChapter(0, 0);
     setLibraryOpen(false);
     onClose?.();
+    if (book.format === 'epub') loadLibraryBooks();
   };
 
   const handleDeleteBook = async (e, bookId) => {

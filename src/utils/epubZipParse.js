@@ -3,11 +3,24 @@
  */
 import JSZip from 'jszip';
 
+/** Id главы — только файл (без якоря) */
 function slugFromHref(href) {
   return (href || 'section')
     .replace(/[#?].*$/, '')
     .replace(/[^\w.-]+/g, '_')
     .slice(0, 120) || 'section';
+}
+
+/** Уникальный id раздела: файл + fragment (#heading), иначе Pandoc-TOC слипается */
+function hrefToSectionId(href, fallback) {
+  const h = normalizeEpubHref(href);
+  if (!h) return fallback || 'section';
+  const safe = h
+    .replace(/#/g, '__')
+    .replace(/[^\w.@+-]+/g, '_')
+    .replace(/_+/g, '_')
+    .slice(0, 120);
+  return safe || fallback || 'section';
 }
 
 function textContent(el) {
@@ -58,9 +71,9 @@ export function tocItemsToChapters(tocItems) {
         id: slugFromHref(href) || `ch_${idx}`,
         title: label,
         sections: item.subitems.map((sub, sIdx) => ({
-          id: slugFromHref(sub.href) || `sec_${idx}_${sIdx}`,
+          id: hrefToSectionId(sub.href, `sec_${idx}_${sIdx}`),
           title: (sub.label || `§ ${sIdx + 1}`).trim(),
-          epubHref: sub.href,
+          epubHref: normalizeEpubHref(sub.href),
         })),
       };
     }
@@ -69,9 +82,9 @@ export function tocItemsToChapters(tocItems) {
       title: label,
       sections: [
         {
-          id: slugFromHref(href) || `sec_${idx}_0`,
+          id: hrefToSectionId(href, `sec_${idx}_0`),
           title: label,
-          epubHref: href,
+          epubHref: normalizeEpubHref(href),
         },
       ],
     };
@@ -84,9 +97,9 @@ function spineToChapters(spineHrefs) {
     title: `Документ ${idx + 1}`,
     sections: [
       {
-        id: slugFromHref(href) || `spine_${idx}`,
+        id: hrefToSectionId(href, `spine_${idx}`),
         title: `Документ ${idx + 1}`,
-        epubHref: href,
+        epubHref: normalizeEpubHref(href),
       },
     ],
   }));
