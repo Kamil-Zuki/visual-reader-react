@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Visual Reader",
-  "version": "0.2.0",
+  "version": "0.3.2",
   "identifier": "com.visualreader.app",
   "build": {
     "frontendDist": "../dist",
@@ -20,7 +20,11 @@
       }
     ],
     "security": {
-      "csp": null
+      "csp": null,
+      "assetProtocol": {
+        "enable": true,
+        "scope": ["$APPDATA/**", "$APPLOCALDATA/**"]
+      }
     }
   },
   "bundle": {

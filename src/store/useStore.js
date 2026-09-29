@@ -9,6 +9,8 @@ import {
   resetSystemPromptsInDB,
   resetCustomCommandsInDB
 } from '../utils/db';
+import { clearEpubSearchCache } from '../utils/epubSearchIndex';
+import { invalidateSearchCache } from '../utils/searchIndex';
 
 export const useStore = create((set) => ({
   apiKey: '',
@@ -42,10 +44,97 @@ export const useStore = create((set) => ({
   },
 
   currentBook: null,
-  currentBookId: 'default_ddia',
+  currentBookId: '',
   setCurrentBook: (book, id) => {
-    if (id) setStoreValue('ddia_active_book_id', id);
-    set({ currentBook: book, currentBookId: id || 'default_ddia' });
+    const bookId = id || book?.id || '';
+    if (bookId) setStoreValue('ddia_active_book_id', bookId);
+    else setStoreValue('ddia_active_book_id', '');
+    set({ currentBook: book, currentBookId: bookId });
+  },
+
+  /** Текст текущей EPUB-страницы для AI-инспектора */
+  epubReaderText: '',
+  setEpubReaderText: (text) => set({ epubReaderText: text }),
+
+  epubReaderTheme: 'dark',
+  setEpubReaderTheme: (theme) => {
+    setStoreValue('epub_reader_theme', theme);
+    set({ epubReaderTheme: theme });
+  },
+
+  /** Последняя позиция CFI по bookId */
+  epubLocations: {},
+  setEpubLocation: (bookId, cfi) => {
+    if (!bookId || !cfi) return;
+    set((state) => {
+      const epubLocations = { ...state.epubLocations, [bookId]: cfi };
+      setStoreValue('epub_locations', epubLocations);
+      return { epubLocations };
+    });
+  },
+
+  /** Одноразово открыть EPUB на сохранённом CFI вместо начала оглавления */
+  epubResumeBookId: null,
+  requestEpubResume: (bookId) => set({ epubResumeBookId: bookId || null }),
+  clearEpubResume: () => set({ epubResumeBookId: null }),
+
+  /** Очистка прогресса и данных книги при удалении из библиотеки */
+  purgeBookUserData: (bookId) => {
+    if (!bookId) return;
+    clearEpubSearchCache(bookId);
+    invalidateSearchCache(bookId);
+    set((state) => {
+      const dropBookKey = (obj) => {
+        if (!obj || !Object.prototype.hasOwnProperty.call(obj, bookId)) return obj;
+        const next = { ...obj };
+        delete next[bookId];
+        return next;
+      };
+      const filterChat = { ...state.chatHistories };
+      Object.keys(filterChat).forEach((k) => {
+        if (k.startsWith(`${bookId}_`)) delete filterChat[k];
+      });
+      const filterQuiz = dropBookKey(state.quizResults);
+      const epubLocations = { ...state.epubLocations };
+      delete epubLocations[bookId];
+      const readSections = dropBookKey(state.readSections);
+      const bookmarks = dropBookKey(state.bookmarks);
+      const highlights = dropBookKey(state.highlights);
+      const flashcards = dropBookKey(state.flashcards);
+      const glossary = dropBookKey(state.glossary);
+
+      setStoreValue('epub_locations', epubLocations);
+      setStoreValue('ddia_read_sections', readSections);
+      setStoreValue('ddia_bookmarks', bookmarks);
+      setStoreValue('ddia_highlights', highlights);
+      setStoreValue('ddia_flashcards', flashcards);
+      setStoreValue('ddia_glossary', glossary);
+      setStoreValue('ddia_quiz_results', filterQuiz);
+      setStoreValue('ddia_chat_histories', filterChat);
+
+      const clearedActive = state.currentBookId === bookId;
+      let currentBook = state.currentBook;
+      let currentBookId = state.currentBookId;
+      if (clearedActive) {
+        currentBook = null;
+        currentBookId = '';
+        setStoreValue('ddia_active_book_id', '');
+      }
+
+      return {
+        epubLocations,
+        readSections,
+        bookmarks,
+        highlights,
+        flashcards,
+        glossary,
+        quizResults: filterQuiz,
+        chatHistories: filterChat,
+        currentBook,
+        currentBookId,
+        epubReaderText: clearedActive ? '' : state.epubReaderText,
+      };
+    });
   },
 
   mobileTab: 'reader', // 'sidebar' | 'reader' | 'ai'
@@ -472,13 +561,15 @@ export async function initStoreFromDB() {
     glossary,
     savedCards,
     deletedCards,
-    readingLog
+    readingLog,
+    epubLocations,
+    epubReaderTheme
   ] = await Promise.all([
     getStoreValue('openrouter_api_key', ''),
     getStoreValue('openrouter_model', 'openrouter/free'),
     getStoreValue('ddia_language', 'ru'),
     getAllPromptsFromDB(),
-    getStoreValue('ddia_active_book_id', 'default_ddia'),
+    getStoreValue('ddia_active_book_id', ''),
     getStoreValue('ddia_read_sections', {}),
     getStoreValue('ddia_bookmarks', {}),
     getStoreValue('ddia_highlights', {}),
@@ -498,7 +589,9 @@ export async function initStoreFromDB() {
     getStoreValue('ddia_glossary', {}),
     getStoreValue('ddia_saved_cards', []),
     getStoreValue('ddia_deleted_cards', {}),
-    getStoreValue('ddia_reading_log', {})
+    getStoreValue('ddia_reading_log', {}),
+    getStoreValue('epub_locations', {}),
+    getStoreValue('epub_reader_theme', 'dark')
   ]);
 
   const defaultSyncSettings = {
@@ -542,7 +635,10 @@ export async function initStoreFromDB() {
     glossary: glossary || {},
     savedCards: Array.isArray(savedCards) ? savedCards : [],
     deletedCards: deletedCards || {},
-    readingLog: readingLog || {}
+    readingLog: readingLog || {},
+    epubLocations: epubLocations || {},
+    epubReaderTheme:
+      ['dark', 'light', 'sepia', 'book'].includes(epubReaderTheme) ? epubReaderTheme : 'dark',
   });
 
   // Migrate old localStorage-only saved cards if the store is empty

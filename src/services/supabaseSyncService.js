@@ -172,6 +172,7 @@ export async function pushLocalData(syncKey) {
     flashcards: state.flashcards || {},
     glossary: state.glossary || {},
     readingLog: state.readingLog || {},
+    epubLocations: state.epubLocations || {},
     deviceName: state.syncSettings?.deviceName || getDefaultDeviceName(),
     clientTimestamp: Date.now()
   };
@@ -433,6 +434,20 @@ export async function mergeRemoteIntoLocal(remoteData) {
     const mergedCustomCommands = Array.from(cmdMap.values());
 
     // 5. Merge OpenRouter settings (apiKey, model, language)
+    const localEpubLoc = state.epubLocations || {};
+    const remoteEpubLoc = remoteData.epubLocations || {};
+    const remoteIsNewer =
+      (remoteData.clientTimestamp || 0) >= new Date(state.lastSyncedAt || 0).getTime();
+    const mergedEpubLocations = { ...localEpubLoc };
+    const epubBookIds = new Set([...Object.keys(localEpubLoc), ...Object.keys(remoteEpubLoc)]);
+    for (const bookId of epubBookIds) {
+      const localCfi = localEpubLoc[bookId];
+      const remoteCfi = remoteEpubLoc[bookId];
+      if (!remoteCfi) continue;
+      if (!localCfi || remoteIsNewer) mergedEpubLocations[bookId] = remoteCfi;
+      else mergedEpubLocations[bookId] = localCfi;
+    }
+
     const storeUpdates = {
       bookmarks: mergedBookmarks,
       highlights: mergedHighlights,
@@ -448,6 +463,7 @@ export async function mergeRemoteIntoLocal(remoteData) {
       flashcards: mergedFlashcards,
       glossary: mergedGlossary,
       readingLog: mergedLog,
+      epubLocations: mergedEpubLocations,
       lastSyncedAt: new Date().toISOString()
     };
 
@@ -455,6 +471,7 @@ export async function mergeRemoteIntoLocal(remoteData) {
       setStoreValue('ddia_bookmarks', mergedBookmarks),
       setStoreValue('ddia_highlights', mergedHighlights),
       setStoreValue('ddia_read_sections', mergedReadSections),
+      setStoreValue('epub_locations', mergedEpubLocations),
       setStoreValue('ddia_deleted_highlights', mergedDeletedH),
       setStoreValue('ddia_deleted_bookmarks', mergedDeletedB),
       setStoreValue('ddia_unmarked_sections', mergedUnmarked),
@@ -584,6 +601,7 @@ function setupStoreAutoSync(syncKey) {
   let prevFlashcards = useStore.getState().flashcards;
   let prevGlossary = useStore.getState().glossary;
   let prevReadingLog = useStore.getState().readingLog;
+  let prevEpubLocations = useStore.getState().epubLocations;
 
   storeUnsubscribe = useStore.subscribe((state) => {
     if (isApplyingRemoteUpdate) return;
@@ -605,6 +623,7 @@ function setupStoreAutoSync(syncKey) {
     const fcChanged = state.flashcards !== prevFlashcards;
     const glChanged = state.glossary !== prevGlossary;
     const rlChanged = state.readingLog !== prevReadingLog;
+    const elChanged = state.epubLocations !== prevEpubLocations;
 
     prevBookmarks = state.bookmarks;
     prevHighlights = state.highlights;
@@ -622,8 +641,9 @@ function setupStoreAutoSync(syncKey) {
     prevFlashcards = state.flashcards;
     prevGlossary = state.glossary;
     prevReadingLog = state.readingLog;
+    prevEpubLocations = state.epubLocations;
 
-    if (bChanged || hChanged || rChanged || dhChanged || dbChanged || unChanged || pChanged || cChanged || dcChanged || kChanged || mChanged || scChanged || dcrdChanged || fcChanged || glChanged || rlChanged) {
+    if (bChanged || hChanged || rChanged || dhChanged || dbChanged || unChanged || pChanged || cChanged || dcChanged || kChanged || mChanged || scChanged || dcrdChanged || fcChanged || glChanged || rlChanged || elChanged) {
       if (debounceTimeout) clearTimeout(debounceTimeout);
 
       useStore.setState({ syncStatus: 'syncing' });

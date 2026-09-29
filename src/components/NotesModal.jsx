@@ -175,13 +175,14 @@ export default function NotesModal() {
                         
                         <button
                           onClick={() => {
-                            setPendingScrollHighlightId(h.id);
                             setActiveChapter(h.chapterIdx, h.sectionIdx);
+                            setPendingScrollHighlightId(h.id);
                             setNotesOpen(false);
                           }}
                           className="text-xs text-textMuted hover:text-white underline underline-offset-2 transition-colors cursor-pointer"
+                          title={h.cfiRange ? 'Открыть позицию в EPUB (CFI)' : 'Открыть раздел'}
                         >
-                          Перейти к тексту
+                          {h.cfiRange ? 'К месту в EPUB' : 'Перейти к тексту'}
                         </button>
                       </div>
                     </div>

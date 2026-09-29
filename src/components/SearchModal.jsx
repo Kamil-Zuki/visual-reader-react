@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useStore } from '../store/useStore';
-import { searchInBook } from '../utils/searchIndex';
+import { searchInBook, searchRecords } from '../utils/searchIndex';
+import { buildEpubSearchRecords } from '../utils/epubSearchIndex';
 import { Search, X, BookOpen, ChevronRight, CornerDownLeft, Sparkles, Hash } from 'lucide-react';
 
 const SUGGESTED_QUERIES = [
@@ -31,8 +32,13 @@ export default function SearchModal() {
   const [query, setQuery] = useState('');
   const [debouncedQuery, setDebouncedQuery] = useState('');
   const [selectedIdx, setSelectedIdx] = useState(0);
+  const [epubRecords, setEpubRecords] = useState(null);
+  const [epubIndexLoading, setEpubIndexLoading] = useState(false);
+  const [epubIndexError, setEpubIndexError] = useState('');
   const inputRef = useRef(null);
   const resultsContainerRef = useRef(null);
+
+  const isEpub = currentBook?.format === 'epub';
 
   // Debounce query for smooth typing
   useEffect(() => {
@@ -56,13 +62,46 @@ export default function SearchModal() {
     }
   }, [isSearchOpen]);
 
+  useEffect(() => {
+    if (!isSearchOpen || !isEpub || !currentBook) {
+      setEpubRecords(null);
+      setEpubIndexLoading(false);
+      setEpubIndexError('');
+      return;
+    }
+    let cancelled = false;
+    setEpubIndexLoading(true);
+    setEpubIndexError('');
+    buildEpubSearchRecords(currentBook, currentBookId)
+      .then((records) => {
+        if (!cancelled) {
+          setEpubRecords(records);
+          setEpubIndexLoading(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error('[SearchModal] EPUB index failed:', err);
+          setEpubIndexError(err.message || 'Не удалось проиндексировать EPUB');
+          setEpubIndexLoading(false);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [isSearchOpen, isEpub, currentBook, currentBookId]);
+
   // Perform search
   const searchResults = useMemo(() => {
     if (!currentBook || !debouncedQuery || debouncedQuery.length < 2) {
       return [];
     }
+    if (isEpub) {
+      if (!epubRecords?.length) return [];
+      return searchRecords(epubRecords, debouncedQuery, 50);
+    }
     return searchInBook(currentBook, currentBookId, debouncedQuery, 50);
-  }, [currentBook, currentBookId, debouncedQuery]);
+  }, [currentBook, currentBookId, debouncedQuery, isEpub, epubRecords]);
 
   // Calculate total occurrences
   const totalMatches = useMemo(() => {
@@ -160,11 +199,29 @@ export default function SearchModal() {
         </div>
 
         {/* Status / Count bar */}
+        {isEpub && isSearchOpen && epubIndexLoading && (
+          <div className="px-4 py-2 bg-indigo-500/10 border-b border-indigo-500/20 text-xs text-indigo-200">
+            Индексируем EPUB для поиска… (первый раз может занять минуту)
+          </div>
+        )}
+        {epubIndexError && (
+          <div className="px-4 py-2 bg-red-500/10 border-b border-red-500/20 text-xs text-red-300">
+            {epubIndexError}
+          </div>
+        )}
         {debouncedQuery && debouncedQuery.length >= 2 && (
           <div className="px-4 py-2 bg-white/[0.02] border-b border-white/5 flex items-center justify-between text-xs text-textMuted">
             <span>
-              Найдено: <strong className="text-primaryGlow">{totalMatches}</strong> {totalMatches === 1 ? 'совпадение' : totalMatches < 5 ? 'совпадения' : 'совпадений'} в{' '}
-              <strong className="text-white">{searchResults.length}</strong> {searchResults.length === 1 ? 'разделе' : 'разделах'}
+              {isEpub && epubIndexLoading ? (
+                'Подготовка индекса…'
+              ) : (
+                <>
+                  Найдено: <strong className="text-primaryGlow">{totalMatches}</strong>{' '}
+                  {totalMatches === 1 ? 'совпадение' : totalMatches < 5 ? 'совпадения' : 'совпадений'} в{' '}
+                  <strong className="text-white">{searchResults.length}</strong>{' '}
+                  {searchResults.length === 1 ? 'разделе' : 'разделах'}
+                </>
+              )}
             </span>
             <span className="hidden sm:inline text-textDim">
               Нажмите <kbd className="px-1 py-0.5 bg-white/10 rounded font-mono text-[10px]">↵ Enter</kbd> для перехода

@@ -64,20 +64,13 @@ export function indexBook(book, bookId = 'default') {
 }
 
 /**
- * Searches across the indexed book content.
- * Returns grouped or flat list of matching sections with snippets.
+ * Поиск по уже построенным записям (HTML/PDF или EPUB).
  */
-export function searchInBook(book, bookId, query, maxResults = 50) {
-  if (!query || query.trim().length < 2) return [];
+export function searchRecords(records, query, maxResults = 50) {
+  if (!query || query.trim().length < 2 || !records?.length) return [];
 
   const trimmedQuery = query.trim();
   const qLower = trimmedQuery.toLowerCase();
-
-  let records = searchCache.get(bookId);
-  if (!records || records.length === 0) {
-    records = indexBook(book, bookId);
-  }
-
   const results = [];
 
   for (const record of records) {
@@ -140,4 +133,24 @@ export function searchInBook(book, bookId, query, maxResults = 50) {
   }
 
   return results;
+}
+
+export function invalidateSearchCache(bookId) {
+  if (bookId) searchCache.delete(bookId);
+  else searchCache.clear();
+}
+
+/**
+ * Searches across the indexed book content.
+ * Returns grouped or flat list of matching sections with snippets.
+ */
+export function searchInBook(book, bookId, query, maxResults = 50) {
+  if (!query || query.trim().length < 2) return [];
+
+  let records = searchCache.get(bookId);
+  if (!records || records.length === 0) {
+    records = indexBook(book, bookId);
+  }
+
+  return searchRecords(records, query, maxResults);
 }

@@ -136,7 +136,8 @@ export default function AIInspector() {
     highlights,
     aiInspectorTab, setAiInspectorTab,
     chatHistories, addChatMessage, clearChatHistory,
-    savedCards, addSavedCard, deleteSavedCard, clearSavedCards, updateSavedCard
+    savedCards, addSavedCard, deleteSavedCard, clearSavedCards, updateSavedCard,
+    epubReaderText
   } = useStore();
   
   const [fullscreenDiagram, setFullscreenDiagram] = useState({ isOpen: false, svg: '', title: '' });
@@ -157,7 +158,10 @@ export default function AIInspector() {
   const sectionTitle = currentSection?.title || 'Раздел';
   const chapterTitle = currentChapter?.title || 'Глава';
   const rawHtml = currentSection?.html || currentSection?.content || '';
-  const currentSectionText = stripHtml(rawHtml);
+  const currentSectionText =
+    currentBook?.format === 'epub'
+      ? (epubReaderText || '').trim()
+      : stripHtml(rawHtml);
 
   const secHighlights = (highlights[currentBookId] || []).filter(
     h => h.chapterIdx === activeChapterIdx && h.sectionIdx === activeSectionIdx

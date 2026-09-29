@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { useStore, initStoreFromDB } from './store/useStore';
-import { openDB, getBookByIdFromDB } from './utils/db';
-import { BOOK_DATA } from './data/book_data';
+import { openDB, getBookByIdFromDB, getAllBooksFromDB } from './utils/db';
 import {
   BookOpen,
   Settings,
@@ -26,8 +25,10 @@ import {
 
 import Sidebar from './components/Sidebar';
 import Reader from './components/Reader';
+import EpubReader from './components/EpubReader';
 import AIInspector from './components/AIInspector';
 import LibraryModal from './components/LibraryModal';
+import LibraryPanel from './components/LibraryPanel';
 import SettingsModal from './components/SettingsModal';
 import NotesModal from './components/NotesModal';
 import ConceptGraphModal from './components/ConceptGraphModal';
@@ -42,7 +43,7 @@ import { initSyncServiceFromSettings, connectSync } from './services/supabaseSyn
 
 function App() {
   const {
-    currentBook, setCurrentBook, currentBookId,
+    currentBook, setCurrentBook, currentBookId, requestEpubResume, clearEpubResume,
     setLibraryOpen, setSettingsOpen, setNotesOpen, setGraphOpen, apiKey,
     setSearchOpen,
     setFlashcardsOpen, setGlossaryOpen, setStatsOpen, flashcards,
@@ -111,22 +112,16 @@ function App() {
     }
   };
 
+  const isEpub = currentBook?.format === 'epub';
+  const hasBook = Boolean(
+    currentBook && ((currentBook.chapters?.length || 0) > 0 || (currentBook.structure?.length || 0) > 0)
+  );
+
   useEffect(() => {
     const initApp = async () => {
-      // 1. Сразу показываем книгу по умолчанию — интерфейс моментальный
-      const defaultBookData = {
-        id: 'default_ddia',
-        title: BOOK_DATA?.title || 'Designing Data-Intensive Applications',
-        author: BOOK_DATA?.author || 'Martin Kleppmann',
-        chapters: BOOK_DATA?.chapters || [],
-        isDefault: true
-      };
-      setCurrentBook(defaultBookData, 'default_ddia');
-
-      // 2. В фоне инициализируем БД — без тайм-аута, чтобы она успела создать таблицы
       try {
-        await openDB();           // создаёт таблицы если нужно
-        await initStoreFromDB();  // загружает настройки, закладки, хайлайты
+        await openDB();
+        await initStoreFromDB();
 
         // Проверяем, передан ли ключ синхронизации через URL/Hash для сопряжения по QR-коду
         let urlParams = null;
@@ -162,20 +157,34 @@ function App() {
           }
         }
 
-        // Если последняя активная книга — не дефолтная, загружаем её
         const savedBookId = useStore.getState().currentBookId;
-        if (savedBookId && savedBookId !== 'default_ddia') {
-          const book = await getBookByIdFromDB(savedBookId);
-          if (book && (book.chapters || book.structure)) {
-            setCurrentBook(book, book.id);
+        let loaded = null;
+        if (savedBookId) {
+          loaded = await getBookByIdFromDB(savedBookId);
+        }
+        if (!loaded) {
+          const all = await getAllBooksFromDB();
+          loaded = all[0] || null;
+        }
+        if (loaded?.chapters?.length || loaded?.structure?.length) {
+          const locs = useStore.getState().epubLocations;
+          if (loaded.format === 'epub' && locs[loaded.id]) {
+            requestEpubResume(loaded.id);
+          } else {
+            clearEpubResume();
           }
+          setCurrentBook(loaded, loaded.id);
+        } else {
+          clearEpubResume();
+          setCurrentBook(null, '');
         }
       } catch (e) {
         console.error('[App] DB init failed in background:', e);
+        setCurrentBook(null, '');
       }
     };
     initApp();
-  }, []);
+  }, [setCurrentBook, setLibraryOpen]);
 
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-bgMain">
@@ -198,7 +207,7 @@ function App() {
             <BookOpen size={18} />
           </div>
           <h1 className="font-semibold text-base sm:text-lg shrink-0 tracking-tight">Visual Reader</h1>
-          {currentBook && (
+          {hasBook && currentBook && (
             <span className="text-xs text-textMuted bg-white/5 px-2 py-1 rounded border border-white/10 ml-1 truncate max-w-[120px] sm:max-w-xs hidden xs:inline-block">
               {currentBook.title}
             </span>
@@ -233,8 +242,13 @@ function App() {
 
           {/* Full-text Book Search Button */}
           <button
-            onClick={() => setSearchOpen(true)}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 hover:border-primary/40 transition-colors cursor-pointer group"
+            onClick={() => hasBook && setSearchOpen(true)}
+            disabled={!hasBook}
+            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-colors group ${
+              hasBook
+                ? 'bg-white/5 hover:bg-white/10 border-white/10 hover:border-primary/40 cursor-pointer'
+                : 'bg-white/[0.02] border-white/5 text-textDim opacity-50 cursor-not-allowed'
+            }`}
             title="Полнотекстовый поиск по книге (Ctrl+K или Ctrl+F)"
           >
             <Search size={14} className="text-primaryGlow group-hover:scale-110 transition-transform" />
@@ -244,36 +258,62 @@ function App() {
             </span>
           </button>
 
+          {hasBook ? (
+            <button
+              onClick={() => setLibraryOpen(true)}
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+              title="Сменить книгу"
+            >
+              <Library size={14} />
+              <span className="hidden sm:inline">Библиотека</span>
+            </button>
+          ) : null}
+          {hasBook && (
+            <button
+              onClick={() => {
+                clearEpubResume();
+                setCurrentBook(null, '');
+              }}
+              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+              title="Закрыть книгу и вернуться на главный экран"
+            >
+              <BookOpen size={14} />
+              <span className="hidden sm:inline">В библиотеку</span>
+            </button>
+          )}
+
           <button
-            onClick={() => setLibraryOpen(true)}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
-            title="Библиотека книг"
+            onClick={() => hasBook && setNotesOpen(true)}
+            disabled={!hasBook}
+            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-colors ${
+              hasBook
+                ? 'bg-white/5 hover:bg-white/10 border-white/10 cursor-pointer'
+                : 'opacity-50 cursor-not-allowed border-white/5'
+            }`}
+            title="Ваши заметки и хайлайты"
           >
-            <Library size={14} />
-            <span className="hidden sm:inline">Библиотека</span>
+            <PenTool size={14} />
+            <span className="hidden sm:inline">Заметки</span>
           </button>
 
           <button
-            onClick={() => setGraphOpen(true)}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+            onClick={() => hasBook && setGraphOpen(true)}
+            disabled={!hasBook}
+            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-colors ${
+              hasBook
+                ? 'bg-white/5 hover:bg-white/10 border-white/10 cursor-pointer'
+                : 'opacity-50 cursor-not-allowed border-white/5'
+            }`}
             title="Граф концепций"
           >
             <Network size={14} />
             <span className="hidden sm:inline">Связи</span>
           </button>
 
-          <button
-            onClick={() => setNotesOpen(true)}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
-            title="Ваши Заметки"
-          >
-            <PenTool size={14} />
-            <span className="hidden sm:inline">Заметки</span>
-          </button>
-
           {/* Flashcards & Spaced Repetition Button */}
           <button
-            onClick={() => setFlashcardsOpen(true)}
+            onClick={() => hasBook && setFlashcardsOpen(true)}
+            disabled={!hasBook}
             className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer relative"
             title="Флешкарты и интервальное повторение"
           >
@@ -378,6 +418,12 @@ function App() {
 
       {/* Main Layout: Desktop (3 columns with resizers) vs Mobile (active tab) */}
       <div className="flex flex-1 overflow-hidden relative">
+        {!hasBook ? (
+          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8 md:p-12 bg-bgMain">
+            <LibraryPanel layout="embedded" />
+          </div>
+        ) : (
+        <>
         {/* Desktop Layout */}
         <div className="hidden md:flex w-full h-full relative overflow-hidden">
           {/* Left Sidebar */}
@@ -407,7 +453,7 @@ function App() {
           )}
 
           {/* Central Reader */}
-          <Reader />
+          {isEpub ? <EpubReader /> : <Reader />}
 
           {/* Floating tab to reopen inspector if collapsed */}
           {!isInspectorOpen && (
@@ -440,12 +486,15 @@ function App() {
         {/* Mobile View: Render only active tab */}
         <div className="flex md:hidden w-full h-full pb-14">
           {mobileTab === 'sidebar' && <Sidebar />}
-          {mobileTab === 'reader' && <Reader />}
+          {mobileTab === 'reader' && (isEpub ? <EpubReader /> : <Reader />)}
           {mobileTab === 'ai' && <AIInspector />}
         </div>
+        </>
+        )}
       </div>
 
       {/* Mobile Bottom Navigation Bar */}
+      {hasBook && (
       <nav className="md:hidden fixed bottom-0 left-0 right-0 h-14 bg-bgSidebar/95 backdrop-blur-md border-t border-borderColor flex items-center justify-around px-2 z-30 safe-bottom">
         <button
           onClick={() => setMobileTab('sidebar')}
@@ -477,6 +526,7 @@ function App() {
           <span className="text-[10px] mt-0.5">ИИ-схемы</span>
         </button>
       </nav>
+      )}
 
       {/* Modals */}
       <SearchModal />

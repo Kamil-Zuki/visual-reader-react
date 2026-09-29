@@ -290,8 +290,8 @@ export default function Reader() {
   if (!currentBook) {
     return (
       <main className="flex-1 bg-bgMain relative overflow-y-auto custom-scrollbar flex items-center justify-center">
-        <div className="text-textMuted flex items-center gap-3">
-          <div className="spinner"></div> Загрузка книги...
+        <div className="text-textMuted text-sm text-center px-6">
+          Откройте или импортируйте книгу (EPUB) в библиотеке
         </div>
       </main>
     );

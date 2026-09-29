@@ -23,3 +23,6 @@ dev-dist
 *.njsproj
 *.sln
 *.sw?
+
+# Сгенерированный HTML-бандл (npm run parse-book)
+src/data/book_data.js

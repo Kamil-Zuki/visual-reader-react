@@ -69,3 +69,11 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+
+/* EPUB.js iframe — фон синхронизирован с темой (--epub-iframe-bg на .epub-host) */
+.epub-host iframe {
+  width: 100% !important;
+  height: 100% !important;
+  border: none;
+  background: var(--epub-iframe-bg, #0c0e14);
+}
