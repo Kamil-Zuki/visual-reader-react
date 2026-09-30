@@ -96,7 +96,8 @@ export default function Reader() {
     setFlashcardModalTab,
     addFlashcard,
     setGlossaryOpen,
-    addGlossaryTerm
+    addGlossaryTerm,
+    setReaderSelectionText,
   } = useStore();
   const contentRef = useRef(null);
   const [selectionRange, setSelectionRange] = useState(null);
@@ -231,11 +232,17 @@ export default function Reader() {
     const checkSel = () => {
       const sel = window.getSelection();
       const txt = sel?.toString().trim();
-      if (txt && txt.length > 5) {
+      if (txt && txt.length > 5 && sel.rangeCount > 0) {
+        const anchor = sel.anchorNode;
+        if (contentRef.current && anchor && !contentRef.current.contains(anchor)) {
+          return;
+        }
         setSelectedText(txt);
+        setReaderSelectionText(txt);
         setSelectionRange(sel.getRangeAt(0).cloneRange());
-      } else {
+      } else if (!txt) {
         setSelectedText('');
+        setReaderSelectionText('');
         setSelectionRange(null);
       }
     };

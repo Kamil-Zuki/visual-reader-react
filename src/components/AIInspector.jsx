@@ -139,6 +139,8 @@ export default function AIInspector() {
     chatHistories, addChatMessage, clearChatHistory,
     savedCards, addSavedCard, deleteSavedCard, clearSavedCards, updateSavedCard,
     epubReaderText,
+    readerSelectionText,
+    setReaderSelectionText,
     ankiSettings,
   } = useStore();
   
@@ -181,14 +183,26 @@ export default function AIInspector() {
     }
   }, [currentChat, isChatLoading, aiInspectorTab]);
 
-  // Selection listener (desktop mouseup + mobile touchend / selectionchange)
+  // EPUB/HTML reader пишут выделение в store (iframe не виден window.getSelection)
   useEffect(() => {
+    if (readerSelectionText && readerSelectionText.length > 5) {
+      setSelectedText(readerSelectionText);
+    } else if (!readerSelectionText) {
+      setSelectedText('');
+    }
+  }, [readerSelectionText]);
+
+  // HTML reader: резервный слушатель только вне EPUB
+  useEffect(() => {
+    if (currentBook?.format === 'epub') return undefined;
+
     let timer = null;
     const updateSelection = () => {
       const selection = window.getSelection();
       const text = selection?.toString().trim();
       if (text && text.length > 5) {
         setSelectedText(text);
+        setReaderSelectionText(text);
       }
     };
 
@@ -207,7 +221,12 @@ export default function AIInspector() {
       document.removeEventListener('touchend', updateSelection);
       document.removeEventListener('selectionchange', handleSelectionChange);
     };
-  }, []);
+  }, [currentBook?.format, setReaderSelectionText]);
+
+  const clearSelectedFragment = () => {
+    setSelectedText('');
+    setReaderSelectionText('');
+  };
 
   // AI Card generator (Diagrams, Analogies, Summaries, Custom commands)
   const triggerAI = async (type, customCmd = null) => {
@@ -575,7 +594,7 @@ ${currentSectionText.slice(0, 12000)}
                   <Sparkles size={13} /> Выделенный фрагмент:
                 </span>
                 <button 
-                  onClick={() => setSelectedText('')}
+                  onClick={clearSelectedFragment}
                   className="text-xs text-textDim hover:text-textMuted p-1 cursor-pointer"
                 >
                   ✕
@@ -820,7 +839,7 @@ ${currentSectionText.slice(0, 12000)}
               <button
                 onClick={() => {
                   setChatInput(`Поясни этот фрагмент: "${selectedText}"\n`);
-                  setSelectedText('');
+                  clearSelectedFragment();
                   chatInputRef.current?.focus();
                 }}
                 className="text-[10px] bg-primary hover:bg-primaryGlow text-white px-2 py-1 rounded font-medium shrink-0 transition-colors cursor-pointer"

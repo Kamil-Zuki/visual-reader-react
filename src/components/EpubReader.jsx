@@ -45,6 +45,7 @@ export default function EpubReader() {
     activeChapterIdx,
     activeSectionIdx,
     setEpubReaderText,
+    setReaderSelectionText,
     epubLocations,
     setEpubLocation,
     markSectionAsRead,
@@ -89,10 +90,16 @@ export default function EpubReader() {
     else markSectionAsRead(currentBookId, sectionId);
   };
 
-  const dismissEpubSelection = useCallback(() => {
+  /** Закрыть панель выделения, не сбрасывая текст для AI-инспектора */
+  const closeEpubSelectionToolbar = useCallback(() => {
     clearIframeTextSelection(renditionRef.current);
     setEpubSelection(null);
   }, []);
+
+  const dismissEpubSelection = useCallback(() => {
+    closeEpubSelectionToolbar();
+    setReaderSelectionText('');
+  }, [closeEpubSelectionToolbar, setReaderSelectionText]);
 
   const toggleBookmark = () => {
     if (!sectionId) return;
@@ -229,15 +236,24 @@ export default function EpubReader() {
         // epub.js шлёт selected, но не «снято выделение» — слушаем iframe
         rendition.hooks.content.register((contents) => {
           if (!contents?.document) return;
+          let selTimer = null;
           const onSelectionChange = () => {
-            const sel = contents.window?.getSelection?.();
-            if (!sel || sel.rangeCount === 0) {
-              setEpubSelection(null);
-              return;
-            }
-            if (sel.getRangeAt(0).collapsed) {
-              setEpubSelection(null);
-            }
+            clearTimeout(selTimer);
+            selTimer = setTimeout(() => {
+              const sel = contents.window?.getSelection?.();
+              if (!sel || sel.rangeCount === 0) {
+                setEpubSelection(null);
+                return;
+              }
+              if (sel.getRangeAt(0).collapsed) {
+                setEpubSelection(null);
+                return;
+              }
+              const text = sel.toString().trim();
+              if (text.length > 5) {
+                setReaderSelectionText(text);
+              }
+            }, 150);
           };
           contents.document.addEventListener('selectionchange', onSelectionChange);
         });
@@ -252,6 +268,7 @@ export default function EpubReader() {
           }
           if (text.length > 2) {
             setEpubSelection({ cfiRange, text });
+            setReaderSelectionText(text);
           } else {
             setEpubSelection(null);
           }
@@ -270,9 +287,10 @@ export default function EpubReader() {
       bookRef.current = null;
       appliedCfisRef.current.clear();
       setEpubReaderText('');
+      setReaderSelectionText('');
       setEpubSelection(null);
     };
-  }, [currentBookId, currentBook?.filePath]);
+  }, [currentBookId, currentBook?.filePath, setReaderSelectionText]);
 
   useEffect(() => {
     const rendition = renditionRef.current;
@@ -423,7 +441,8 @@ export default function EpubReader() {
         console.warn('[EpubReader] live annotation failed:', e);
       }
     }
-    dismissEpubSelection();
+    setReaderSelectionText(epubSelection.text);
+    closeEpubSelectionToolbar();
   };
 
   const goPrev = () => {
@@ -559,9 +578,10 @@ export default function EpubReader() {
               <button
                 type="button"
                 onClick={() => {
+                  setReaderSelectionText(epubSelection.text);
                   setMobileTab('ai');
                   setInspectorOpen(true);
-                  dismissEpubSelection();
+                  closeEpubSelectionToolbar();
                 }}
                 className="flex-1 py-1.5 px-2.5 rounded-lg bg-gradient-to-r from-primary to-accentPurple text-white text-xs font-semibold flex items-center justify-center gap-1.5"
               >

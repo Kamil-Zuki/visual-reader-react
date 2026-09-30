@@ -1,5 +1,6 @@
 /** Клиент AnkiConnect (локальный HTTP API аддона Anki) */
 
+import { invoke } from '@tauri-apps/api/core';
 import { isTauriEnv } from '../utils/db';
 
 export const DEFAULT_ANKI_SETTINGS = {
@@ -21,7 +22,6 @@ export async function ankiConnectRequest(baseUrl, action, params = {}) {
   const body = JSON.stringify({ action, version: 6, params });
 
   if (isTauriEnv()) {
-    const { invoke } = await import('@tauri-apps/api/core');
     return invoke('anki_connect_request', { baseUrl: url, body });
   }
 

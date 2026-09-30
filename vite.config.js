@@ -10,6 +10,10 @@ const enablePwa = isGithubPages || process.env.ENABLE_PWA === 'true'
 
 export default defineConfig({
   base: isGithubPages ? '/visual-reader-react/' : '/',
+  build: {
+    // epubjs + mermaid + react — один крупный чанк для Tauri ожидаем
+    chunkSizeWarningLimit: 1800,
+  },
   plugins: [
     react(),
     ...(enablePwa ? [

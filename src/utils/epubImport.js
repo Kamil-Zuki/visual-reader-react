@@ -11,6 +11,8 @@ import { pruneReadSectionsForBook } from './bookProgress';
 import { useStore } from '../store/useStore';
 
 import { parseEpubFromZip, tocItemsToChapters } from './epubZipParse';
+import { deleteEpubSearchIndexFile } from './epubSearchIndex';
+import { convertFileSrc } from '@tauri-apps/api/core';
 
 
 
@@ -183,8 +185,6 @@ export async function deleteEpubFile(bookId) {
 
   }
 
-  const { deleteEpubSearchIndexFile } = await import('./epubSearchIndex');
-
   await deleteEpubSearchIndexFile(bookId);
 
 }
@@ -331,8 +331,6 @@ export async function refreshEpubTocFromDisk(book) {
 export async function resolveEpubUrl(book) {
 
   if (book.filePath && isTauriEnv()) {
-
-    const { convertFileSrc } = await import('@tauri-apps/api/core');
 
     return convertFileSrc(book.filePath);
 

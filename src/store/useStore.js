@@ -57,12 +57,16 @@ export const useStore = create((set) => ({
     const bookId = id || book?.id || '';
     if (bookId) setStoreValue('ddia_active_book_id', bookId);
     else setStoreValue('ddia_active_book_id', '');
-    set({ currentBook: book, currentBookId: bookId });
+    set({ currentBook: book, currentBookId: bookId, readerSelectionText: '' });
   },
 
   /** Текст текущей EPUB-страницы для AI-инспектора */
   epubReaderText: '',
   setEpubReaderText: (text) => set({ epubReaderText: text }),
+
+  /** Выделенный фрагмент для AI-инспектора (EPUB iframe / HTML reader) */
+  readerSelectionText: '',
+  setReaderSelectionText: (text) => set({ readerSelectionText: (text || '').trim() }),
 
   epubReaderTheme: 'dark',
   setEpubReaderTheme: (theme) => {
@@ -150,7 +154,8 @@ export const useStore = create((set) => ({
 
   activeChapterIdx: 0,
   activeSectionIdx: 0,
-  setActiveChapter: (cIdx, sIdx = 0) => set({ activeChapterIdx: cIdx, activeSectionIdx: sIdx, mobileTab: 'reader' }),
+  setActiveChapter: (cIdx, sIdx = 0) =>
+    set({ activeChapterIdx: cIdx, activeSectionIdx: sIdx, mobileTab: 'reader', readerSelectionText: '' }),
 
   pendingScrollHighlightId: null,
   setPendingScrollHighlightId: (id) => set({ pendingScrollHighlightId: id }),
