@@ -308,7 +308,7 @@ function App() {
                 ? 'bg-white/5 hover:bg-white/10 border-white/10 cursor-pointer'
                 : 'opacity-50 cursor-not-allowed border-white/5'
             }`}
-            title="Граф концепций"
+            title="Карта знаний: оглавление и прогресс"
           >
             <Network size={14} />
             <span className="hidden sm:inline">Связи</span>
