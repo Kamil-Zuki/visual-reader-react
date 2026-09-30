@@ -1,7 +1,13 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
 import { X, Key, Cpu, Sparkles, Globe, MessageSquareCode, RotateCcw, Check, Plus, Edit2, Trash2, Cloud, Layers, Loader2 } from 'lucide-react';
-import { testAnkiConnection, DEFAULT_ANKI_SETTINGS } from '../services/ankiConnectService';
+import {
+  testAnkiConnection,
+  fetchAnkiCatalog,
+  fetchAnkiModelFields,
+  guessAnkiFieldMap,
+  DEFAULT_ANKI_SETTINGS,
+} from '../services/ankiConnectService';
 import CommandModal from './CommandModal';
 
 export default function SettingsModal() {
@@ -33,6 +39,12 @@ export default function SettingsModal() {
   const [localAnkiSettings, setLocalAnkiSettings] = useState({ ...DEFAULT_ANKI_SETTINGS });
   const [ankiTesting, setAnkiTesting] = useState(false);
   const [ankiTestMessage, setAnkiTestMessage] = useState('');
+  const [ankiCatalogLoading, setAnkiCatalogLoading] = useState(false);
+  const [ankiDeckNames, setAnkiDeckNames] = useState([]);
+  const [ankiModelNames, setAnkiModelNames] = useState([]);
+  const [ankiModelFields, setAnkiModelFields] = useState([]);
+  const [ankiFieldsLoading, setAnkiFieldsLoading] = useState(false);
+  const [ankiCustomDeck, setAnkiCustomDeck] = useState(false);
 
   useEffect(() => {
     if (isSettingsOpen) {
@@ -43,9 +55,78 @@ export default function SettingsModal() {
       setSavedSuccess(false);
       setLocalAnkiSettings({ ...DEFAULT_ANKI_SETTINGS, ...ankiSettings });
       setAnkiTestMessage('');
+      setAnkiDeckNames([]);
+      setAnkiModelNames([]);
+      setAnkiModelFields([]);
+      setAnkiCustomDeck(false);
       loadModels();
     }
   }, [isSettingsOpen]);
+
+  useEffect(() => {
+    if (!isSettingsOpen || activeTab !== 'anki') return;
+    loadAnkiCatalog();
+  }, [isSettingsOpen, activeTab, localAnkiSettings.baseUrl]);
+
+  useEffect(() => {
+    if (!isSettingsOpen || activeTab !== 'anki' || !localAnkiSettings.modelName) return;
+    loadAnkiModelFields(localAnkiSettings.modelName);
+  }, [isSettingsOpen, activeTab, localAnkiSettings.baseUrl, localAnkiSettings.modelName]);
+
+  const applyFieldMapToSettings = (fields, prev, autoOnly) => {
+    const guessed = guessAnkiFieldMap(fields);
+    const frontValid = prev.fieldFront && fields.includes(prev.fieldFront);
+    const backValid = prev.fieldBack && fields.includes(prev.fieldBack);
+    if (autoOnly && frontValid && backValid) {
+      return prev;
+    }
+    return {
+      ...prev,
+      fieldFront: frontValid ? prev.fieldFront : guessed.front,
+      fieldBack: backValid ? prev.fieldBack : guessed.back,
+    };
+  };
+
+  const loadAnkiCatalog = async () => {
+    setAnkiCatalogLoading(true);
+    try {
+      const { deckNames, modelNames } = await fetchAnkiCatalog(localAnkiSettings);
+      setAnkiDeckNames(deckNames);
+      setAnkiModelNames(modelNames);
+      setLocalAnkiSettings((prev) => {
+        let next = { ...prev };
+        if (modelNames.length && !modelNames.includes(prev.modelName)) {
+          const fallback = modelNames.includes('Basic') ? 'Basic' : modelNames[0];
+          next = { ...next, modelName: fallback };
+        }
+        if (deckNames.length && !deckNames.includes(prev.deckName) && !ankiCustomDeck) {
+          setAnkiCustomDeck(true);
+        }
+        return next;
+      });
+    } catch (err) {
+      setAnkiDeckNames([]);
+      setAnkiModelNames([]);
+      setAnkiTestMessage((msg) =>
+        msg || `Не удалось загрузить списки: ${err.message}. Запустите Anki с AnkiConnect.`
+      );
+    } finally {
+      setAnkiCatalogLoading(false);
+    }
+  };
+
+  const loadAnkiModelFields = async (modelName) => {
+    setAnkiFieldsLoading(true);
+    try {
+      const fields = await fetchAnkiModelFields(localAnkiSettings, modelName);
+      setAnkiModelFields(fields);
+      setLocalAnkiSettings((prev) => applyFieldMapToSettings(fields, prev, true));
+    } catch {
+      setAnkiModelFields([]);
+    } finally {
+      setAnkiFieldsLoading(false);
+    }
+  };
 
   const loadModels = async () => {
     setLoadingModels(true);
@@ -94,8 +175,13 @@ export default function SettingsModal() {
     setAnkiTestMessage('');
     try {
       const { version, deckNames, modelNames } = await testAnkiConnection(localAnkiSettings);
+      setAnkiDeckNames(deckNames);
+      setAnkiModelNames(modelNames);
       const hasDeck = deckNames.includes(localAnkiSettings.deckName);
       const hasModel = modelNames.includes(localAnkiSettings.modelName);
+      if (localAnkiSettings.modelName && hasModel) {
+        await loadAnkiModelFields(localAnkiSettings.modelName);
+      }
       setAnkiTestMessage(
         `AnkiConnect v${version}. Колод: ${deckNames.length}, типов заметок: ${modelNames.length}.` +
           (hasDeck ? '' : ` Колода «${localAnkiSettings.deckName}» будет создана при импорте.`) +
@@ -316,45 +402,169 @@ export default function SettingsModal() {
                 placeholder="http://127.0.0.1:8765"
               />
             </div>
+            {(ankiCatalogLoading || ankiDeckNames.length > 0) && (
+              <div className="flex items-center gap-2 text-[11px] text-textDim">
+                {ankiCatalogLoading ? (
+                  <>
+                    <Loader2 size={12} className="animate-spin text-primaryGlow" />
+                    Загрузка колод и типов заметок из Anki…
+                  </>
+                ) : (
+                  <span>
+                    Из Anki: {ankiDeckNames.length} колод, {ankiModelNames.length} типов заметок
+                  </span>
+                )}
+              </div>
+            )}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-textMain uppercase tracking-wider">Колода</label>
-                <input
-                  value={localAnkiSettings.deckName}
-                  onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, deckName: e.target.value }))}
-                  className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
-                />
+                {ankiDeckNames.length > 0 && !ankiCustomDeck ? (
+                  <select
+                    value={
+                      ankiDeckNames.includes(localAnkiSettings.deckName)
+                        ? localAnkiSettings.deckName
+                        : '__new__'
+                    }
+                    onChange={(e) => {
+                      if (e.target.value === '__new__') {
+                        setAnkiCustomDeck(true);
+                        return;
+                      }
+                      setLocalAnkiSettings((s) => ({ ...s, deckName: e.target.value }));
+                    }}
+                    className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                  >
+                    {ankiDeckNames.map((name) => (
+                      <option key={name} value={name} className="bg-[#1a1f2e]">
+                        {name}
+                      </option>
+                    ))}
+                    <option value="__new__" className="bg-[#1a1f2e]">
+                      + Новая колода…
+                    </option>
+                  </select>
+                ) : (
+                  <div className="flex flex-col gap-1">
+                    <input
+                      value={localAnkiSettings.deckName}
+                      onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, deckName: e.target.value }))}
+                      className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                      placeholder="Visual Reader"
+                    />
+                    {ankiDeckNames.length > 0 && (
+                      <button
+                        type="button"
+                        onClick={() => setAnkiCustomDeck(false)}
+                        className="text-[10px] text-primaryGlow hover:underline text-left"
+                      >
+                        Выбрать из списка Anki
+                      </button>
+                    )}
+                  </div>
+                )}
               </div>
               <div className="flex flex-col gap-1.5">
                 <label className="text-xs font-semibold text-textMain uppercase tracking-wider">Тип заметок</label>
-                <input
-                  value={localAnkiSettings.modelName}
-                  onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, modelName: e.target.value }))}
-                  className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
-                  placeholder="Basic"
-                />
+                {ankiModelNames.length > 0 ? (
+                  <select
+                    value={localAnkiSettings.modelName}
+                    onChange={(e) => {
+                      const modelName = e.target.value;
+                      setLocalAnkiSettings((s) => ({
+                        ...s,
+                        modelName,
+                        fieldFront: '',
+                        fieldBack: '',
+                      }));
+                    }}
+                    className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                  >
+                    {ankiModelNames.map((name) => (
+                      <option key={name} value={name} className="bg-[#1a1f2e]">
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={localAnkiSettings.modelName}
+                    onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, modelName: e.target.value }))}
+                    className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                    placeholder="Basic"
+                  />
+                )}
               </div>
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-textMain uppercase tracking-wider">Поле «лицо»</label>
-                <input
-                  value={localAnkiSettings.fieldFront}
-                  onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, fieldFront: e.target.value }))}
-                  placeholder="Front (авто)"
-                  className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
-                />
+                <label className="text-xs font-semibold text-textMain uppercase tracking-wider">
+                  Поле «лицо»
+                  {ankiFieldsLoading && (
+                    <Loader2 size={11} className="inline ml-1 animate-spin text-textDim" />
+                  )}
+                </label>
+                {ankiModelFields.length > 0 ? (
+                  <select
+                    value={localAnkiSettings.fieldFront || ankiModelFields[0]}
+                    onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, fieldFront: e.target.value }))}
+                    className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                  >
+                    {ankiModelFields.map((name) => (
+                      <option key={name} value={name} className="bg-[#1a1f2e]">
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={localAnkiSettings.fieldFront}
+                    onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, fieldFront: e.target.value }))}
+                    placeholder="Front (авто)"
+                    className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                  />
+                )}
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className="text-xs font-semibold text-textMain uppercase tracking-wider">Поле «ответ»</label>
-                <input
-                  value={localAnkiSettings.fieldBack}
-                  onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, fieldBack: e.target.value }))}
-                  placeholder="Back (авто)"
-                  className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
-                />
+                <label className="text-xs font-semibold text-textMain uppercase tracking-wider">
+                  Поле «ответ»
+                  {ankiFieldsLoading && (
+                    <Loader2 size={11} className="inline ml-1 animate-spin text-textDim" />
+                  )}
+                </label>
+                {ankiModelFields.length > 0 ? (
+                  <select
+                    value={localAnkiSettings.fieldBack || ankiModelFields[1] || ankiModelFields[0]}
+                    onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, fieldBack: e.target.value }))}
+                    className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                  >
+                    {ankiModelFields.map((name) => (
+                      <option key={name} value={name} className="bg-[#1a1f2e]">
+                        {name}
+                      </option>
+                    ))}
+                  </select>
+                ) : (
+                  <input
+                    value={localAnkiSettings.fieldBack}
+                    onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, fieldBack: e.target.value }))}
+                    placeholder="Back (авто)"
+                    className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                  />
+                )}
               </div>
             </div>
+            {ankiModelFields.length > 1 && (
+              <button
+                type="button"
+                onClick={() =>
+                  setLocalAnkiSettings((prev) => applyFieldMapToSettings(ankiModelFields, prev, false))
+                }
+                className="text-[11px] text-primaryGlow hover:underline text-left w-fit"
+              >
+                Подставить поля автоматически (Front/Back, Question/Answer…)
+              </button>
+            )}
             <div className="flex flex-col gap-1.5">
               <label className="text-xs font-semibold text-textMain uppercase tracking-wider">Теги (через запятую)</label>
               <input

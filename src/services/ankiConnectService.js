@@ -48,12 +48,48 @@ export async function ankiConnectRequest(baseUrl, action, params = {}) {
   return data.result;
 }
 
-export async function testAnkiConnection(settings) {
+/** Угадывание полей «лицо» / «ответ» по именам полей типа заметок */
+export function guessAnkiFieldMap(fields) {
+  if (!fields?.length) {
+    return { front: '', back: '' };
+  }
+  if (fields.length === 1) {
+    return { front: fields[0], back: fields[0] };
+  }
+  const front =
+    fields.find((f) => /^front$/i.test(f)) ||
+    fields.find((f) => /question|term|word|expression/i.test(f)) ||
+    fields[0];
+  const back =
+    fields.find((f) => /^back$/i.test(f)) ||
+    fields.find((f) => /answer|definition|meaning|reading|translation/i.test(f)) ||
+    fields.find((f) => f !== front) ||
+    fields[1];
+  return { front, back };
+}
+
+export async function fetchAnkiCatalog(settings) {
   const baseUrl = normalizeBaseUrl(settings?.baseUrl);
-  const version = await ankiConnectRequest(baseUrl, 'version');
-  const deckNames = await ankiConnectRequest(baseUrl, 'deckNames');
-  const modelNames = await ankiConnectRequest(baseUrl, 'modelNames');
-  return { version, deckNames, modelNames };
+  const [version, deckNames, modelNames] = await Promise.all([
+    ankiConnectRequest(baseUrl, 'version'),
+    ankiConnectRequest(baseUrl, 'deckNames'),
+    ankiConnectRequest(baseUrl, 'modelNames'),
+  ]);
+  return {
+    version,
+    deckNames: [...(deckNames || [])].sort((a, b) => a.localeCompare(b, 'ru')),
+    modelNames: [...(modelNames || [])].sort((a, b) => a.localeCompare(b, 'ru')),
+  };
+}
+
+export async function fetchAnkiModelFields(settings, modelName) {
+  const baseUrl = normalizeBaseUrl(settings?.baseUrl);
+  const fields = await ankiConnectRequest(baseUrl, 'modelFieldNames', { modelName });
+  return [...(fields || [])];
+}
+
+export async function testAnkiConnection(settings) {
+  return fetchAnkiCatalog(settings);
 }
 
 async function ensureDeck(baseUrl, deckName) {
@@ -74,9 +110,7 @@ export async function resolveAnkiFieldMap(baseUrl, modelName, settings) {
   if (fields.length === 1) {
     return { front: fields[0], back: fields[0] };
   }
-  const front = fields.find((f) => /^front$/i.test(f)) || fields[0];
-  const back = fields.find((f) => /^back$/i.test(f)) || fields[1];
-  return { front, back };
+  return guessAnkiFieldMap(fields);
 }
 
 function toAnkiHtml(text) {
