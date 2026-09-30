@@ -6,7 +6,9 @@
 
 import ePub from 'epubjs';
 
-import { isTauriEnv } from './db';
+import { isTauriEnv, setStoreValue } from './db';
+import { pruneReadSectionsForBook } from './bookProgress';
+import { useStore } from '../store/useStore';
 
 import { parseEpubFromZip, tocItemsToChapters } from './epubZipParse';
 
@@ -293,6 +295,11 @@ export async function prepareEpubBookForReading(book, saveBookToDB) {
   const refreshed = await refreshEpubTocFromDisk(book);
   if (saveBookToDB && JSON.stringify(refreshed.chapters) !== JSON.stringify(book.chapters)) {
     await saveBookToDB(refreshed);
+  }
+  const pruned = pruneReadSectionsForBook(refreshed, useStore.getState().readSections);
+  if (pruned.changed) {
+    setStoreValue('ddia_read_sections', pruned.readSections);
+    useStore.setState({ readSections: pruned.readSections });
   }
   return refreshed;
 }

@@ -425,14 +425,14 @@ ${currentSectionText.slice(0, 12000)}
   const cards = savedCards;
 
   return (
-    <aside 
-      style={{ width: `${inspectorWidth}px` }}
-      className="w-full md:w-auto bg-bgSidebar md:border-l border-borderColor flex flex-col shrink-0 h-full pb-16 md:pb-0"
+    <aside
+      style={{ '--inspector-w': `${inspectorWidth}px` }}
+      className="w-full min-w-0 max-w-full overflow-hidden bg-bgSidebar md:border-l border-borderColor flex flex-col md:shrink-0 md:w-[var(--inspector-w)] h-full pb-16 md:pb-0"
     >
       {/* Header with Mode Switcher (Cards / Chat) */}
-      <div className="h-14 border-b border-borderColor flex items-center justify-between px-3 md:px-4 shrink-0 font-semibold text-sm bg-black/20">
+      <div className="min-h-14 border-b border-borderColor flex flex-wrap items-center justify-between gap-2 px-3 md:px-4 py-2 shrink-0 font-semibold text-sm bg-black/20">
         {/* Tab switch buttons */}
-        <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10">
+        <div className="flex items-center gap-1 bg-white/5 p-1 rounded-xl border border-white/10 min-w-0 max-w-full overflow-x-auto">
           <button
             onClick={() => setAiInspectorTab('cards')}
             className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
@@ -473,7 +473,7 @@ ${currentSectionText.slice(0, 12000)}
         </div>
 
         {/* Action icons */}
-        <div className="flex items-center gap-1.5">
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
           {aiInspectorTab === 'cards' ? (
             <>
               <button
@@ -520,7 +520,7 @@ ${currentSectionText.slice(0, 12000)}
 
       {/* VIEW 1: Cards & Visualizer Mode */}
       {aiInspectorTab === 'cards' && (
-        <div className="flex-1 p-3 sm:p-4 overflow-y-auto relative custom-scrollbar flex flex-col gap-4">
+        <div className="flex-1 min-w-0 p-3 sm:p-4 overflow-y-auto overflow-x-hidden relative custom-scrollbar flex flex-col gap-4">
           {/* Custom text input box */}
           {showInput && (
             <div className="p-3 rounded-xl bg-bgCard border border-primary/30 flex flex-col gap-2">
@@ -677,9 +677,9 @@ ${currentSectionText.slice(0, 12000)}
 
           {/* Generated Cards */}
           {cards.map((card) => (
-            <div 
-              key={card.id} 
-              className="p-4 rounded-xl bg-bgCard border border-borderColor flex flex-col gap-3 shadow-md"
+            <div
+              key={card.id}
+              className="p-4 rounded-xl bg-bgCard border border-borderColor flex flex-col gap-3 shadow-md min-w-0 max-w-full overflow-hidden"
             >
               <div className="flex items-center justify-between border-b border-white/5 pb-2">
                 <span className="text-xs font-semibold text-primaryGlow uppercase tracking-wider flex items-center gap-1.5">
@@ -736,7 +736,7 @@ ${currentSectionText.slice(0, 12000)}
                       </div>
                     </div>
                   ) : (
-                    <div className="text-xs text-textMain leading-relaxed whitespace-pre-wrap">
+                    <div className="text-xs text-textMain leading-relaxed whitespace-pre-wrap break-words overflow-x-auto">
                       {card.content}
                     </div>
                   )}
@@ -749,11 +749,11 @@ ${currentSectionText.slice(0, 12000)}
 
       {/* VIEW 2: AI Chat Tutor Mode */}
       {aiInspectorTab === 'chat' && (
-        <div className="flex-1 flex flex-col h-full overflow-hidden bg-bgMain/30">
+        <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden bg-bgMain/30">
           {/* Section Context Pill Banner */}
           <div className="px-3.5 py-2.5 bg-black/40 border-b border-borderColor flex flex-col gap-1 shrink-0">
             <div className="flex items-center justify-between text-[11px]">
-              <div className="flex items-center gap-1.5 text-textDim truncate max-w-[240px]">
+              <div className="flex items-center gap-1.5 text-textDim min-w-0 flex-1 truncate">
                 <BookOpen size={12} className="text-primaryGlow shrink-0" />
                 <span className="truncate">{chapterTitle}</span>
               </div>
@@ -764,7 +764,7 @@ ${currentSectionText.slice(0, 12000)}
             </div>
 
             <div className="flex items-center justify-between">
-              <span className="text-xs font-semibold text-white truncate max-w-[280px]">
+              <span className="text-xs font-semibold text-white truncate min-w-0 flex-1">
                 {sectionTitle}
               </span>
               {secHighlights.length > 0 && (

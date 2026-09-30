@@ -1,5 +1,10 @@
 import React, { useState } from 'react';
 import { useStore } from '../store/useStore';
+import {
+  calcBookProgressPercent,
+  countEffectiveReadSections,
+  getEffectiveReadSectionIds,
+} from '../utils/bookProgress';
 import { ChevronDown, ChevronRight, FileText, PanelLeftClose, Bookmark, List } from 'lucide-react';
 
 export default function Sidebar() {
@@ -60,19 +65,27 @@ export default function Sidebar() {
     return null;
   }).filter(Boolean);
 
-  const bookReadSections = readSections[currentBookId] || [];
+  const readIdSet = new Set(getEffectiveReadSectionIds(currentBook, readSections, currentBookId));
   const bookBookmarks = bookmarks[currentBookId] || [];
   const bookHighlights = highlights[currentBookId] || [];
   const bookFlashcards = flashcards[currentBookId] || [];
   const bookGlossary = glossary[currentBookId] || [];
   const totalSections = chapters.reduce((acc, chap) => acc + (chap.sections?.length || 0), 0);
-  const readCount = bookReadSections.length;
-  const progressPercent = totalSections === 0 ? 0 : Math.round((readCount / totalSections) * 100);
+  const readCount = countEffectiveReadSections(
+    { chapters: currentBook?.chapters || chapters },
+    readSections,
+    currentBookId
+  );
+  const progressPercent = calcBookProgressPercent(
+    { chapters: currentBook?.chapters || chapters },
+    readSections,
+    currentBookId
+  );
 
   return (
-    <aside 
-      style={{ width: `${sidebarWidth}px` }}
-      className="w-full md:w-auto bg-bgSidebar md:border-r border-borderColor flex flex-col shrink-0 h-full select-none"
+    <aside
+      style={{ '--sidebar-w': `${sidebarWidth}px` }}
+      className="w-full min-w-0 max-w-full overflow-hidden bg-bgSidebar md:border-r border-borderColor flex flex-col md:shrink-0 md:w-[var(--sidebar-w)] h-full select-none"
     >
       <div className="p-3 border-b border-borderColor flex items-center gap-2">
         <div className="flex bg-black/40 rounded-lg p-1 flex-1">
@@ -227,7 +240,7 @@ export default function Sidebar() {
                   <div className="mt-0.5 space-y-0.5">
                     {sections.map((sec, sIdx) => {
                       const isSecActive = isActive && activeSectionIdx === sIdx;
-                      const isRead = bookReadSections.includes(sec.id);
+                      const isRead = readIdSet.has(sec.id);
                       const quiz = quizResults[currentBookId]?.[sec.id];
 
                       // TOC knowledge-map indicators

@@ -488,7 +488,7 @@ function App() {
 
 
         {/* Mobile View: Render only active tab */}
-        <div className="flex md:hidden w-full h-full pb-14">
+        <div className="flex md:hidden w-full min-w-0 max-w-full h-full pb-14 overflow-x-hidden">
           {mobileTab === 'sidebar' && <Sidebar />}
           {mobileTab === 'reader' && (isEpub ? <EpubReader /> : <Reader />)}
           {mobileTab === 'ai' && <AIInspector />}
