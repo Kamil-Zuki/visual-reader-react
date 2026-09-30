@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useStore } from '../store/useStore';
 import { 
-  Lightbulb, Network, FileText, Maximize2, Trash2, Loader2, 
-  Sparkles, Plus, Edit2, PanelRightClose, MessageSquare, Send, 
-  Bot, User, Copy, Check, Quote, BookOpen, HelpCircle 
+  Lightbulb, Network, FileText, Maximize2, Trash2, Loader2,
+  Sparkles, Plus, Edit2, PanelRightClose, MessageSquare, Send,
+  Bot, User, Copy, Check, Quote, BookOpen, HelpCircle,
 } from 'lucide-react';
+import { pushSavedAiCardToAnki } from '../services/ankiConnectService';
 import mermaid from 'mermaid';
 import DiagramModal from './DiagramModal';
 import CommandModal from './CommandModal';
@@ -137,7 +138,8 @@ export default function AIInspector() {
     aiInspectorTab, setAiInspectorTab,
     chatHistories, addChatMessage, clearChatHistory,
     savedCards, addSavedCard, deleteSavedCard, clearSavedCards, updateSavedCard,
-    epubReaderText
+    epubReaderText,
+    ankiSettings,
   } = useStore();
   
   const [fullscreenDiagram, setFullscreenDiagram] = useState({ isOpen: false, svg: '', title: '' });
@@ -421,6 +423,24 @@ ${currentSectionText.slice(0, 12000)}
 
   const [customText, setCustomText] = useState('');
   const [showInput, setShowInput] = useState(false);
+  const [ankiCardSendingId, setAnkiCardSendingId] = useState(null);
+
+  const sendAiCardToAnki = async (card) => {
+    if (!card?.content && !card?.quote) return;
+    setAnkiCardSendingId(card.id);
+    try {
+      const result = await pushSavedAiCardToAnki(card, currentBook?.title, ankiSettings);
+      alert(
+        result.added
+          ? 'Карточка добавлена в Anki.'
+          : 'Anki не добавил заметку (возможно, дубликат).'
+      );
+    } catch (err) {
+      alert(`AnkiConnect: ${err.message}`);
+    } finally {
+      setAnkiCardSendingId(null);
+    }
+  };
 
   const cards = savedCards;
 
@@ -690,6 +710,21 @@ ${currentSectionText.slice(0, 12000)}
                   )}
                 </span>
                 <div className="flex items-center gap-1">
+                  {!card.loading && card.content && (
+                    <button
+                      type="button"
+                      onClick={() => sendAiCardToAnki(card)}
+                      disabled={ankiCardSendingId === card.id}
+                      title="Отправить в Anki"
+                      className="p-1 rounded hover:bg-primary/15 text-textDim hover:text-primaryGlow transition-colors cursor-pointer"
+                    >
+                      {ankiCardSendingId === card.id ? (
+                        <Loader2 size={13} className="animate-spin" />
+                      ) : (
+                        <Send size={13} />
+                      )}
+                    </button>
+                  )}
                   {card.svg && (
                     <button 
                       onClick={() => setFullscreenDiagram({ isOpen: true, svg: card.svg, title: card.quote })}

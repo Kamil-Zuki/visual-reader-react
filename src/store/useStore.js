@@ -11,6 +11,7 @@ import {
 } from '../utils/db';
 import { clearEpubSearchCache } from '../utils/epubSearchIndex';
 import { invalidateSearchCache } from '../utils/searchIndex';
+import { DEFAULT_ANKI_SETTINGS } from '../services/ankiConnectService';
 
 export const useStore = create((set) => ({
   apiKey: '',
@@ -30,6 +31,13 @@ export const useStore = create((set) => ({
     setStoreValue('ddia_language', lang);
     set({ language: lang });
   },
+
+  ankiSettings: { ...DEFAULT_ANKI_SETTINGS },
+  setAnkiSettings: (partial) => set((state) => {
+    const next = { ...state.ankiSettings, ...partial };
+    setStoreValue('anki_settings', next);
+    return { ankiSettings: next };
+  }),
 
   // --- Prompts (Stored in DB) ---
   prompts: {},
@@ -563,7 +571,8 @@ export async function initStoreFromDB() {
     deletedCards,
     readingLog,
     epubLocations,
-    epubReaderTheme
+    epubReaderTheme,
+    ankiSettings
   ] = await Promise.all([
     getStoreValue('openrouter_api_key', ''),
     getStoreValue('openrouter_model', 'openrouter/free'),
@@ -591,7 +600,8 @@ export async function initStoreFromDB() {
     getStoreValue('ddia_deleted_cards', {}),
     getStoreValue('ddia_reading_log', {}),
     getStoreValue('epub_locations', {}),
-    getStoreValue('epub_reader_theme', 'dark')
+    getStoreValue('epub_reader_theme', 'dark'),
+    getStoreValue('anki_settings', null)
   ]);
 
   const defaultSyncSettings = {
@@ -639,6 +649,9 @@ export async function initStoreFromDB() {
     epubLocations: epubLocations || {},
     epubReaderTheme:
       ['dark', 'light', 'sepia', 'book'].includes(epubReaderTheme) ? epubReaderTheme : 'dark',
+    ankiSettings: ankiSettings
+      ? { ...DEFAULT_ANKI_SETTINGS, ...ankiSettings }
+      : { ...DEFAULT_ANKI_SETTINGS },
   });
 
   // Migrate old localStorage-only saved cards if the store is empty

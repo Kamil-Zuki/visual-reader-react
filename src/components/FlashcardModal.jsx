@@ -1,9 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { 
-  X, Sparkles, RotateCw, Check, Trash2, Edit2, Plus, 
-  Download, Layers, Calendar, Clock, BookOpen, ChevronRight, Loader2 
+import {
+  X, Sparkles, RotateCw, Check, Trash2, Edit2, Plus,
+  Download, Layers, Calendar, Clock, BookOpen, ChevronRight, Loader2, Send,
 } from 'lucide-react';
+import { pushFlashcardsToAnki } from '../services/ankiConnectService';
 
 const LANGUAGE_NAMES = {
   ru: 'Russian (на русском языке)',
@@ -32,7 +33,8 @@ export default function FlashcardModal() {
     apiKey,
     model,
     language,
-    setSettingsOpen
+    setSettingsOpen,
+    ankiSettings,
   } = useStore();
 
   const [activeTab, setActiveTab] = useState('review'); // 'review' | 'all' | 'create'
@@ -45,6 +47,7 @@ export default function FlashcardModal() {
   const [frontText, setFrontText] = useState('');
   const [backText, setBackText] = useState('');
   const [isAiGenerating, setIsAiGenerating] = useState(false);
+  const [ankiSending, setAnkiSending] = useState(false);
 
   const bookCards = flashcards[currentBookId] || [];
 
@@ -179,6 +182,23 @@ Language: ${targetLang}`;
     setActiveTab('all');
   };
 
+  const handleSendToAnki = async (cardsToSend) => {
+    const list = cardsToSend || bookCards;
+    if (!list.length) return;
+    setAnkiSending(true);
+    try {
+      const result = await pushFlashcardsToAnki(list, currentBook?.title, ankiSettings);
+      alert(
+        `Anki: добавлено ${result.added} из ${result.total}` +
+          (result.skipped ? `, пропущено (дубликаты): ${result.skipped}` : '')
+      );
+    } catch (err) {
+      alert(`AnkiConnect: ${err.message}\n\nПроверьте Anki и вкладку «Anki» в настройках.`);
+    } finally {
+      setAnkiSending(false);
+    }
+  };
+
   const handleExportCsv = () => {
     if (bookCards.length === 0) return;
     // Anki header directives (lines starting with # are treated as metadata and not imported as cards)
@@ -286,14 +306,27 @@ Language: ${targetLang}`;
           </div>
 
           {bookCards.length > 0 && (
-            <button
-              onClick={handleExportCsv}
-              className="text-xs text-textDim hover:text-white flex items-center gap-1 px-2 py-1 rounded hover:bg-white/5 transition-colors cursor-pointer"
-              title="Экспорт в Anki (TSV)"
-            >
-              <Download size={13} />
-              <span className="hidden sm:inline">Anki экспорт</span>
-            </button>
+            <div className="flex items-center gap-1">
+              <button
+                type="button"
+                onClick={() => handleSendToAnki(bookCards)}
+                disabled={ankiSending}
+                className="text-xs text-primaryGlow hover:text-white flex items-center gap-1 px-2 py-1 rounded hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-50"
+                title="Отправить в Anki через AnkiConnect"
+              >
+                {ankiSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                <span className="hidden sm:inline">AnkiConnect</span>
+              </button>
+              <button
+                type="button"
+                onClick={handleExportCsv}
+                className="text-xs text-textDim hover:text-white flex items-center gap-1 px-2 py-1 rounded hover:bg-white/5 transition-colors cursor-pointer"
+                title="Скачать TSV для импорта в Anki"
+              >
+                <Download size={13} />
+                <span className="hidden sm:inline">TSV</span>
+              </button>
+            </div>
           )}
         </div>
 
@@ -442,6 +475,15 @@ Language: ${targetLang}`;
                             title="Редактировать"
                           >
                             <Edit2 size={12} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleSendToAnki([card])}
+                            disabled={ankiSending}
+                            className="p-1 rounded text-textDim hover:text-primaryGlow hover:bg-primary/10 transition-colors"
+                            title="В Anki"
+                          >
+                            <Send size={12} />
                           </button>
                           <button
                             onClick={() => deleteFlashcard(currentBookId, card.id)}

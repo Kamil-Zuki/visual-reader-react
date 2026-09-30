@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { X, Key, Cpu, Sparkles, Globe, MessageSquareCode, RotateCcw, Check, Plus, Edit2, Trash2, Cloud } from 'lucide-react';
+import { X, Key, Cpu, Sparkles, Globe, MessageSquareCode, RotateCcw, Check, Plus, Edit2, Trash2, Cloud, Layers, Loader2 } from 'lucide-react';
+import { testAnkiConnection, DEFAULT_ANKI_SETTINGS } from '../services/ankiConnectService';
 import CommandModal from './CommandModal';
 
 export default function SettingsModal() {
@@ -11,7 +12,8 @@ export default function SettingsModal() {
     language, setLanguage,
     prompts, setPrompts, resetPrompts,
     customCommands, addCustomCommand, updateCustomCommand, deleteCustomCommand, resetCustomCommands,
-    setSyncModalOpen, syncStatus, syncSettings
+    setSyncModalOpen, syncStatus, syncSettings,
+    ankiSettings, setAnkiSettings,
   } = useStore();
   
   const [activeTab, setActiveTab] = useState('general'); // 'general' | 'prompts'
@@ -28,6 +30,9 @@ export default function SettingsModal() {
   const [modelsList, setModelsList] = useState({ free: [], paid: [] });
   const [loadingModels, setLoadingModels] = useState(false);
   const [savedSuccess, setSavedSuccess] = useState(false);
+  const [localAnkiSettings, setLocalAnkiSettings] = useState({ ...DEFAULT_ANKI_SETTINGS });
+  const [ankiTesting, setAnkiTesting] = useState(false);
+  const [ankiTestMessage, setAnkiTestMessage] = useState('');
 
   useEffect(() => {
     if (isSettingsOpen) {
@@ -36,6 +41,8 @@ export default function SettingsModal() {
       setLocalLanguage(language || 'ru');
       setLocalPrompts(prompts);
       setSavedSuccess(false);
+      setLocalAnkiSettings({ ...DEFAULT_ANKI_SETTINGS, ...ankiSettings });
+      setAnkiTestMessage('');
       loadModels();
     }
   }, [isSettingsOpen]);
@@ -62,6 +69,7 @@ export default function SettingsModal() {
     setModel(localModel || 'openrouter/free');
     setLanguage(localLanguage);
     setPrompts(localPrompts);
+    setAnkiSettings(localAnkiSettings);
     setSavedSuccess(true);
     setTimeout(() => {
       setSettingsOpen(false);
@@ -78,6 +86,27 @@ export default function SettingsModal() {
   const handleResetCommands = async () => {
     if (window.confirm('Сбросить пользовательские команды к начальному списку из базы данных?')) {
       await resetCustomCommands();
+    }
+  };
+
+  const handleTestAnki = async () => {
+    setAnkiTesting(true);
+    setAnkiTestMessage('');
+    try {
+      const { version, deckNames, modelNames } = await testAnkiConnection(localAnkiSettings);
+      const hasDeck = deckNames.includes(localAnkiSettings.deckName);
+      const hasModel = modelNames.includes(localAnkiSettings.modelName);
+      setAnkiTestMessage(
+        `AnkiConnect v${version}. Колод: ${deckNames.length}, типов заметок: ${modelNames.length}.` +
+          (hasDeck ? '' : ` Колода «${localAnkiSettings.deckName}» будет создана при импорте.`) +
+          (hasModel ? '' : ` ⚠ Тип «${localAnkiSettings.modelName}» не найден — выберите другой.`)
+      );
+    } catch (err) {
+      setAnkiTestMessage(
+        `Не удалось подключиться: ${err.message}. Запустите Anki с аддоном AnkiConnect (порт 8765).`
+      );
+    } finally {
+      setAnkiTesting(false);
     }
   };
 
@@ -116,7 +145,15 @@ export default function SettingsModal() {
               activeTab === 'prompts' ? 'bg-primary text-white shadow-md' : 'text-textMuted hover:text-white'
             }`}
           >
-            <MessageSquareCode size={14} /> Мои команды и промпты
+            <MessageSquareCode size={14} /> Команды
+          </button>
+          <button
+            onClick={() => setActiveTab('anki')}
+            className={`flex-1 py-1.5 px-3 rounded-md text-xs font-semibold flex items-center justify-center gap-2 transition-all ${
+              activeTab === 'anki' ? 'bg-primary text-white shadow-md' : 'text-textMuted hover:text-white'
+            }`}
+          >
+            <Layers size={14} /> Anki
           </button>
         </div>
 
@@ -250,6 +287,101 @@ export default function SettingsModal() {
                 Настроить Supabase
               </button>
             </div>
+          </div>
+        )}
+
+        {activeTab === 'anki' && (
+          <div className="flex flex-col gap-4 overflow-y-auto custom-scrollbar pr-1">
+            <p className="text-[11px] text-textDim leading-relaxed">
+              Отправка карточек через{' '}
+              <a
+                href="https://foosoft.net/projects/anki-connect/"
+                target="_blank"
+                rel="noreferrer"
+                className="text-primaryGlow hover:underline"
+              >
+                AnkiConnect
+              </a>
+              . Anki должен быть запущен на этом же компьютере. В десктоп-приложении запрос идёт
+              через Rust (CORS не мешает). В браузере добавьте в конфиг AnkiConnect в{' '}
+              <code className="text-primaryGlow">webCorsOriginList</code> ваш origin, например{' '}
+              <code className="text-primaryGlow">http://localhost:5173</code>.
+            </p>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-textMain uppercase tracking-wider">URL AnkiConnect</label>
+              <input
+                value={localAnkiSettings.baseUrl}
+                onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, baseUrl: e.target.value }))}
+                className="w-full bg-black/40 border border-borderColor rounded-lg px-3.5 py-2.5 text-sm text-white focus:border-primary outline-none"
+                placeholder="http://127.0.0.1:8765"
+              />
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-textMain uppercase tracking-wider">Колода</label>
+                <input
+                  value={localAnkiSettings.deckName}
+                  onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, deckName: e.target.value }))}
+                  className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-textMain uppercase tracking-wider">Тип заметок</label>
+                <input
+                  value={localAnkiSettings.modelName}
+                  onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, modelName: e.target.value }))}
+                  className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                  placeholder="Basic"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-textMain uppercase tracking-wider">Поле «лицо»</label>
+                <input
+                  value={localAnkiSettings.fieldFront}
+                  onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, fieldFront: e.target.value }))}
+                  placeholder="Front (авто)"
+                  className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-xs font-semibold text-textMain uppercase tracking-wider">Поле «ответ»</label>
+                <input
+                  value={localAnkiSettings.fieldBack}
+                  onChange={(e) => setLocalAnkiSettings((s) => ({ ...s, fieldBack: e.target.value }))}
+                  placeholder="Back (авто)"
+                  className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+                />
+              </div>
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <label className="text-xs font-semibold text-textMain uppercase tracking-wider">Теги (через запятую)</label>
+              <input
+                value={(localAnkiSettings.tags || []).join(', ')}
+                onChange={(e) =>
+                  setLocalAnkiSettings((s) => ({
+                    ...s,
+                    tags: e.target.value.split(',').map((t) => t.trim()).filter(Boolean),
+                  }))
+                }
+                className="w-full bg-black/40 border border-borderColor rounded-lg px-3 py-2 text-sm text-white focus:border-primary outline-none"
+              />
+            </div>
+            <button
+              type="button"
+              onClick={handleTestAnki}
+              disabled={ankiTesting}
+              className="flex items-center justify-center gap-2 py-2.5 rounded-lg border border-primary/40 bg-primary/10 hover:bg-primary/20 text-sm text-primaryGlow font-medium transition-colors disabled:opacity-50"
+            >
+              {ankiTesting ? <Loader2 size={16} className="animate-spin" /> : <Check size={16} />}
+              Проверить подключение
+            </button>
+            {ankiTestMessage && (
+              <p className="text-[11px] text-textMuted leading-relaxed border border-white/10 rounded-lg p-2.5 bg-black/30">
+                {ankiTestMessage}
+              </p>
+            )}
           </div>
         )}
 
