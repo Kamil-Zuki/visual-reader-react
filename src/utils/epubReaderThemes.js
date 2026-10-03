@@ -108,31 +108,62 @@ p, li {
 `,
 };
 
-const IFRAME_BG = {
+export const IFRAME_BG = {
   dark: '#0c0e14',
   light: '#f8fafc',
   sepia: '#f4ecd8',
   book: '#ffffff',
 };
 
-let registeredOn = null;
+const THEME_STYLE_ID = 'visual-reader-custom-theme';
 
-/** Регистрирует все темы в rendition (один раз на экземпляр) */
-export function ensureEpubThemesRegistered(rendition) {
-  if (!rendition?.themes) return;
-  if (registeredOn === rendition) return;
-  registeredOn = rendition;
+/** Применяет тему непосредственно к DOM конкретного Contents (iframe документа) */
+export function applyThemeToContent(content, themeId) {
+  if (!content?.document) return;
+  const doc = content.document;
+  const id = EPUB_READER_THEME_IDS.includes(themeId) ? themeId : 'dark';
 
-  for (const id of EPUB_READER_THEME_IDS) {
-    rendition.themes.registerCss(id, CSS[id]);
+  // Удаляем устаревшие инжектированные теги epubjs, чтобы они не конфликтовали
+  for (const tid of EPUB_READER_THEME_IDS) {
+    const oldEpubNode = doc.getElementById(`epubjs-inserted-css-${tid}`);
+    if (oldEpubNode) {
+      oldEpubNode.remove();
+    }
+  }
+
+  let styleEl = doc.getElementById(THEME_STYLE_ID);
+  if (!styleEl) {
+    styleEl = doc.createElement('style');
+    styleEl.id = THEME_STYLE_ID;
+    if (doc.head) {
+      doc.head.appendChild(styleEl);
+    } else if (doc.body) {
+      doc.body.appendChild(styleEl);
+    }
+  }
+
+  styleEl.textContent = CSS[id] || '';
+
+  if (doc.body) {
+    doc.body.setAttribute('data-epub-theme', id);
   }
 }
 
-/** Применить тему к уже открытому rendition */
+/** Применить тему ко всем уже открытым contents в rendition */
 export function selectEpubReaderTheme(rendition, themeId) {
   const id = EPUB_READER_THEME_IDS.includes(themeId) ? themeId : 'dark';
-  ensureEpubThemesRegistered(rendition);
-  rendition.themes.select(id);
+  if (!rendition) return IFRAME_BG[id];
+
+  try {
+    const contents = rendition.getContents?.() || [];
+    const list = Array.isArray(contents) ? contents : [contents];
+    list.forEach((content) => {
+      applyThemeToContent(content, id);
+    });
+  } catch (err) {
+    console.warn('[selectEpubReaderTheme] failed to apply theme:', err);
+  }
+
   return IFRAME_BG[id];
 }
 

@@ -264,7 +264,7 @@ export default function DiagramModal({ isOpen, onClose, svgContent, title }) {
         <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-borderColor bg-bgSidebar shrink-0">
           <div className="flex items-center gap-2 overflow-hidden mr-3">
             <span className="font-semibold text-white text-sm sm:text-base truncate">
-              {title || 'Диаграмма архитектуры'}
+              {title || 'Схема / Диаграмма'}
             </span>
           </div>
 

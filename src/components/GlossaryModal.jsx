@@ -57,8 +57,8 @@ export default function GlossaryModal() {
     setIsGenerating(true);
     const targetLang = LANGUAGE_NAMES[language] || 'Russian';
 
-    const prompt = `You are a technical glossary writer for computer systems engineers.
-Define the term "${termName.trim()}" in the context of the book "${currentBook?.title || 'Distributed Systems & Data Engineering'}".
+    const prompt = `You are an expert lexicographer and analytical scholar.
+Define the term or concept "${termName.trim()}" in the context of the book "${currentBook?.title || 'Book'}" by ${currentBook?.author || 'Author'}.
 Provide a clear, authoritative, concise definition (1-3 sentences, under 60 words).
 Language: ${targetLang}`;
 

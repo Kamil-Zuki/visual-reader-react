@@ -190,6 +190,27 @@ function App() {
     initApp();
   }, [setCurrentBook, setLibraryOpen]);
 
+  const handleResumeReading = async () => {
+    try {
+      const all = await getAllBooksFromDB();
+      if (!all || all.length === 0) return;
+      const savedBookId = useStore.getState().currentBookId;
+      let target = (savedBookId && all.find((b) => b.id === savedBookId)) || all[0];
+      if (target) {
+        if (target.format === 'epub') {
+          target = await prepareEpubBookForReading(target, saveBookToDB);
+        }
+        const locs = useStore.getState().epubLocations;
+        if (target.format === 'epub' && locs[target.id]) {
+          requestEpubResume(target.id);
+        }
+        setCurrentBook(target, target.id);
+      }
+    } catch (e) {
+      console.error('[App] Failed to resume reading:', e);
+    }
+  };
+
   return (
     <div className="flex flex-col h-[100dvh] overflow-hidden bg-bgMain">
       {/* Header with Android/Mobile Status Bar Safe Area Padding */}
@@ -263,26 +284,35 @@ function App() {
           </button>
 
           {hasBook ? (
+            <>
+              <button
+                onClick={() => setLibraryOpen(true)}
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+                title="Сменить книгу"
+              >
+                <Library size={14} />
+                <span className="hidden sm:inline">Библиотека</span>
+              </button>
+              <button
+                onClick={() => {
+                  clearEpubResume();
+                  setCurrentBook(null, '');
+                }}
+                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
+                title="Закрыть книгу и вернуться на главный экран"
+              >
+                <BookOpen size={14} />
+                <span className="hidden sm:inline">В библиотеку</span>
+              </button>
+            </>
+          ) : (
             <button
-              onClick={() => setLibraryOpen(true)}
-              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
-              title="Сменить книгу"
-            >
-              <Library size={14} />
-              <span className="hidden sm:inline">Библиотека</span>
-            </button>
-          ) : null}
-          {hasBook && (
-            <button
-              onClick={() => {
-                clearEpubResume();
-                setCurrentBook(null, '');
-              }}
-              className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
-              title="Закрыть книгу и вернуться на главный экран"
+              onClick={handleResumeReading}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-primary hover:bg-primaryGlow text-white font-medium shadow-md shadow-primary/20 transition-all cursor-pointer"
+              title="Вернуться к чтению книги"
             >
               <BookOpen size={14} />
-              <span className="hidden sm:inline">В библиотеку</span>
+              <span>К чтению</span>
             </button>
           )}
 

@@ -160,20 +160,32 @@ export default function LibraryPanel({ layout = 'compact', showClose = false, on
         layout === 'embedded' ? 'max-w-2xl mx-auto' : ''
       }`}
     >
-      <div className={`flex items-center justify-between ${layout === 'compact' ? 'border-b border-borderColor pb-3' : ''}`}>
-        <div className="flex items-center gap-2 text-lg font-semibold text-white">
-          <Library className="text-primary" size={20} />
-          {layout === 'embedded' ? 'Visual Reader — библиотека' : 'Моя библиотека книг'}
+      <div className={`flex items-center justify-between gap-3 ${layout === 'compact' ? 'border-b border-borderColor pb-3' : ''}`}>
+        <div className="flex items-center gap-2 text-lg font-semibold text-white min-w-0">
+          <Library className="text-primary shrink-0" size={20} />
+          <span className="truncate">{layout === 'embedded' ? 'Visual Reader — библиотека' : 'Моя библиотека книг'}</span>
         </div>
-        {showClose && onClose && (
-          <button
-            type="button"
-            onClick={onClose}
-            className="px-3 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-white hover:bg-white/5 transition-colors"
-          >
-            Закрыть
-          </button>
-        )}
+        <div className="flex items-center gap-2 shrink-0">
+          {layout === 'embedded' && books.length > 0 && (
+            <button
+              type="button"
+              onClick={() => handleSelectBook(books.find((b) => b.id === currentBookId) || books[0])}
+              className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold bg-primary hover:bg-primaryGlow text-white shadow-md shadow-primary/20 transition-all cursor-pointer"
+            >
+              <BookOpen size={14} />
+              <span>Вернуться к чтению</span>
+            </button>
+          )}
+          {showClose && onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-3 py-1.5 rounded-lg text-xs font-medium text-textMuted hover:text-white hover:bg-white/5 transition-colors cursor-pointer"
+            >
+              Закрыть
+            </button>
+          )}
+        </div>
       </div>
 
       {layout === 'embedded' && (
@@ -302,20 +314,28 @@ export default function LibraryPanel({ layout = 'compact', showClose = false, on
                     </div>
                   </div>
                   <div className="flex items-center gap-2 shrink-0">
-                    {isSelected ? (
-                      <span className="flex items-center gap-1 text-xs text-primaryGlow font-medium bg-primary/20 px-2 py-1 rounded">
-                        <CheckCircle size={13} /> Читается
-                      </span>
-                    ) : (
-                      <button
-                        type="button"
-                        onClick={(e) => handleDeleteBook(e, b.id)}
-                        title="Удалить книгу"
-                        className="p-1.5 rounded-md hover:bg-red-500/20 text-textDim hover:text-red-400 transition-colors"
-                      >
-                        <Trash2 size={15} />
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleSelectBook(b);
+                      }}
+                      className={`flex items-center gap-1 text-xs font-semibold px-2.5 py-1.5 rounded transition-all cursor-pointer ${
+                        isSelected
+                          ? 'bg-primary text-white shadow-sm hover:bg-primaryGlow'
+                          : 'bg-white/10 hover:bg-primary/20 text-textMain hover:text-primaryGlow border border-white/10'
+                      }`}
+                    >
+                      <BookOpen size={13} /> {isSelected ? 'Продолжить' : 'Читать'}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={(e) => handleDeleteBook(e, b.id)}
+                      title="Удалить книгу"
+                      className="p-1.5 rounded-md hover:bg-red-500/20 text-textDim hover:text-red-400 transition-colors cursor-pointer"
+                    >
+                      <Trash2 size={15} />
+                    </button>
                   </div>
                 </div>
               );

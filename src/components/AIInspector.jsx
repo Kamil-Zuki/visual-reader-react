@@ -3,9 +3,10 @@ import { useStore } from '../store/useStore';
 import { 
   Lightbulb, Network, FileText, Maximize2, Trash2, Loader2,
   Sparkles, Plus, Edit2, PanelRightClose, MessageSquare, Send,
-  Bot, User, Copy, Check, Quote, BookOpen, HelpCircle,
+  Bot, User, Copy, Check, Quote, BookOpen, HelpCircle, Layers,
+  RotateCw, ChevronDown, ChevronUp,
 } from 'lucide-react';
-import { pushSavedAiCardToAnki } from '../services/ankiConnectService';
+import { pushSavedAiCardToAnki, pushFlashcardsToAnki } from '../services/ankiConnectService';
 import mermaid from 'mermaid';
 import DiagramModal from './DiagramModal';
 import CommandModal from './CommandModal';
@@ -25,6 +26,9 @@ mermaid.initialize({
   }
 });
 
+import MarkdownRenderer from './MarkdownRenderer';
+import CardModal from './CardModal';
+
 const LANGUAGE_NAMES = {
   ru: 'Russian (на русском языке)',
   en: 'English',
@@ -36,96 +40,13 @@ const LANGUAGE_NAMES = {
 
 const CHAT_PROMPT_SUGGESTIONS = [
   { label: '💡 Объясни просто (ELI5)', prompt: 'Объясни ключевую идею этого раздела простыми словами, понятными новичку, используя наглядную аналогию.' },
-  { label: '⚠️ Риски и компромиссы', prompt: 'Какие главные архитектурные компромиссы, ограничения и подводные камни описаны в этом разделе?' },
+  { label: '⚠️ Риски и нюансы', prompt: 'Какие главные ограничения, компромиссы, скрытые нюансы или контраргументы описаны в этом разделе?' },
   { label: '🎯 Задай вопрос для проверки', prompt: 'Сформулируй 2 сложных концептуальных вопроса по этому разделу, чтобы проверить, насколько хорошо я усвоил материал.' },
-  { label: '🛠 Пример из практики', prompt: 'Приведи реальный пример из современной разработки (например, в микросервисах или распределенных БД), где применяется эта концепция.' }
+  { label: '🔍 Пример из жизни / практики', prompt: 'Приведи наглядный пример из реальной жизни, практики или смежных областей, где применяется этот принцип или идея.' }
 ];
 
-function renderInline(text) {
-  const tokens = text.split(/(\*\*.*?\*\*|`.*?`)/g);
-  return tokens.map((token, i) => {
-    if (token.startsWith('**') && token.endsWith('**')) {
-      return <strong key={i} className="font-semibold text-white">{token.slice(2, -2)}</strong>;
-    }
-    if (token.startsWith('`') && token.endsWith('`')) {
-      return (
-        <code key={i} className="px-1 py-0.5 rounded bg-white/10 text-primaryGlow font-mono text-[11px]">
-          {token.slice(1, -1)}
-        </code>
-      );
-    }
-    return token;
-  });
-}
-
 function FormattedMessage({ content }) {
-  const parts = content.split(/(```[\s\S]*?```)/g);
-
-  return (
-    <div className="text-xs leading-relaxed space-y-2 break-words">
-      {parts.map((part, index) => {
-        if (part.startsWith('```') && part.endsWith('```')) {
-          const lines = part.slice(3, -3).trim().split('\n');
-          const firstLine = lines[0].trim();
-          const isLang = /^[a-zA-Z0-9_-]+$/.test(firstLine);
-          const lang = isLang ? firstLine : '';
-          const code = (isLang ? lines.slice(1) : lines).join('\n');
-
-          return (
-            <div key={index} className="my-2 rounded-lg bg-black/60 border border-white/10 overflow-hidden">
-              <div className="flex items-center justify-between px-3 py-1.5 bg-white/5 border-b border-white/5 text-[11px] text-textDim">
-                <span>{lang || 'код'}</span>
-                <button
-                  onClick={() => navigator.clipboard.writeText(code)}
-                  className="hover:text-white transition-colors flex items-center gap-1 cursor-pointer"
-                >
-                  <Copy size={11} /> <span>Копировать</span>
-                </button>
-              </div>
-              <pre className="p-3 text-[11px] font-mono text-primaryGlow overflow-x-auto custom-scrollbar">
-                <code>{code}</code>
-              </pre>
-            </div>
-          );
-        }
-
-        const paragraphs = part.split(/\n\n+/);
-        return paragraphs.map((para, pIdx) => {
-          if (!para.trim()) return null;
-
-          if (para.startsWith('### ')) {
-            return <h4 key={`${index}_${pIdx}`} className="font-semibold text-white text-xs pt-1">{para.slice(4)}</h4>;
-          }
-          if (para.startsWith('## ')) {
-            return <h3 key={`${index}_${pIdx}`} className="font-bold text-white text-sm pt-1">{para.slice(3)}</h3>;
-          }
-          if (para.startsWith('# ')) {
-            return <h2 key={`${index}_${pIdx}`} className="font-bold text-primaryGlow text-sm pt-1">{para.slice(2)}</h2>;
-          }
-
-          const lines = para.split('\n');
-          const isList = lines.every(l => l.trim().startsWith('- ') || l.trim().startsWith('* ') || /^\d+\.\s/.test(l.trim()));
-          if (isList) {
-            return (
-              <ul key={`${index}_${pIdx}`} className="list-disc list-inside space-y-1 pl-1">
-                {lines.map((l, lIdx) => (
-                  <li key={lIdx} className="text-textMain">
-                    {renderInline(l.replace(/^[-*]\s+|\d+\.\s+/, ''))}
-                  </li>
-                ))}
-              </ul>
-            );
-          }
-
-          return (
-            <p key={`${index}_${pIdx}`} className="text-textMain">
-              {renderInline(para)}
-            </p>
-          );
-        });
-      })}
-    </div>
-  );
+  return <MarkdownRenderer content={content} />;
 }
 
 export default function AIInspector() {
@@ -142,6 +63,7 @@ export default function AIInspector() {
     readerSelectionText,
     setReaderSelectionText,
     ankiSettings,
+    flashcards, addFlashcard, deleteFlashcard,
   } = useStore();
   
   const [fullscreenDiagram, setFullscreenDiagram] = useState({ isOpen: false, svg: '', title: '' });
@@ -154,6 +76,15 @@ export default function AIInspector() {
   const [copiedId, setCopiedId] = useState(null);
   const chatScrollRef = useRef(null);
   const chatInputRef = useRef(null);
+
+  // Flashcard inline creator states
+  const [fcFront, setFcFront] = useState('');
+  const [fcBack, setFcBack] = useState('');
+  const [fcAiLoading, setFcAiLoading] = useState(false);
+  const [fcAnkiSending, setFcAnkiSending] = useState(false);
+  const [fcSavedFlash, setFcSavedFlash] = useState(null);
+  const [fcShowAll, setFcShowAll] = useState(true);
+  const fcFrontRef = useRef(null);
 
   // Context derived from current book state
   const chapters = currentBook?.chapters || currentBook?.structure || [];
@@ -173,6 +104,8 @@ export default function AIInspector() {
 
   const chatKey = `${currentBookId}_${activeChapterIdx}_${activeSectionIdx}`;
   const currentChat = chatHistories[chatKey] || [];
+
+  const bookFlashcards = flashcards[currentBookId] || [];
 
   const [selectedText, setSelectedText] = useState('');
 
@@ -357,7 +290,7 @@ export default function AIInspector() {
     const targetLang = LANGUAGE_NAMES[language] || 'Russian';
 
     // Construct detailed context-aware system prompt
-    let systemPrompt = `You are an expert technical tutor and interactive AI mentor. The reader is studying the technical book "${currentBook?.title || 'Book'}" by ${currentBook?.author || ''}.
+    let systemPrompt = `You are an expert tutor, analytical reading companion, and thoughtful mentor. The reader is studying the book "${currentBook?.title || 'Book'}" by ${currentBook?.author || 'Author'}.
 Current context:
 - Chapter: ${chapterTitle}
 - Section: ${sectionTitle}
@@ -373,9 +306,9 @@ ${currentSectionText.slice(0, 12000)}
     }
 
     systemPrompt += `\n\nINSTRUCTIONS:
-1. Provide deep, technically accurate explanations based on the section text.
-2. Clarify complex algorithms, trade-offs, architecture, and edge cases.
-3. Be concise, structured, and pedagogical. Use markdown formatting with bold, lists, and code blocks where helpful.
+1. Provide deep, insightful explanations firmly grounded in the section text and the overarching book context.
+2. Clarify key ideas, themes, arguments, nuances, concepts, or character/narrative dynamics depending on the genre of the book.
+3. Be concise, structured, and pedagogical. Use markdown formatting with bold, lists, quotes, tables, and code blocks where helpful.
 4. Answer in ${targetLang}.`;
 
     const apiMessages = [
@@ -443,6 +376,94 @@ ${currentSectionText.slice(0, 12000)}
   const [customText, setCustomText] = useState('');
   const [showInput, setShowInput] = useState(false);
   const [ankiCardSendingId, setAnkiCardSendingId] = useState(null);
+  const [selectedModalCard, setSelectedModalCard] = useState(null);
+
+  // Flashcard inline helpers
+  const handleFcSave = () => {
+    if (!fcFront.trim() || !fcBack.trim()) return;
+    addFlashcard(currentBookId, {
+      front: fcFront.trim(),
+      back: fcBack.trim(),
+      chapterIdx: activeChapterIdx,
+      sectionIdx: activeSectionIdx,
+      sectionTitle: currentSection?.title || '',
+    });
+    setFcFront('');
+    setFcBack('');
+    setFcSavedFlash('Карточка сохранена!');
+    setTimeout(() => setFcSavedFlash(null), 2000);
+    fcFrontRef.current?.focus();
+  };
+
+  const handleFcAiFormulate = async () => {
+    const input = (fcFront || fcBack).trim();
+    if (!input) return;
+    if (!apiKey) {
+      setSettingsOpen(true);
+      alert('Укажите API-ключ OpenRouter в настройках.');
+      return;
+    }
+    setFcAiLoading(true);
+    const targetLang = LANGUAGE_NAMES[language] || 'Russian';
+    const prompt = `You are an expert tutor creating high-yield flashcards for spaced repetition.
+Based on this text, concept, or excerpt from the book "${currentBook?.title || 'Book'}" by ${currentBook?.author || 'Author'}:
+"${input}"
+
+Generate a single focused, high-retention flashcard:
+1. FRONT: A clear, specific question or prompt testing the core concept (under 25 words).
+2. BACK: A crisp, precise answer or explanation (under 50 words).
+
+Respond STRICTLY in this format with nothing else:
+FRONT: <question>
+BACK: <answer>
+Language: ${targetLang}`;
+
+    try {
+      const res = await fetch('https://openrouter.ai/api/v1/chat/completions', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${apiKey}`,
+          'Content-Type': 'application/json',
+          'HTTP-Referer': window.location.href,
+          'X-Title': 'Visual Reader React - Flashcards'
+        },
+        body: JSON.stringify({
+          model: model || 'openrouter/free',
+          messages: [{ role: 'user', content: prompt }],
+          temperature: 0.2
+        })
+      });
+      if (!res.ok) throw new Error('Ошибка API');
+      const data = await res.json();
+      const content = data.choices?.[0]?.message?.content || '';
+      const frontMatch = content.match(/(?:\*{0,2}FRONT\*{0,2}|Вопрос):\s*(.*?)(?=\n(?:\*{0,2}BACK\*{0,2}|Ответ):|$)/is);
+      const backMatch = content.match(/(?:\*{0,2}BACK\*{0,2}|Ответ):\s*([\s\S]*)/is);
+      if (frontMatch && backMatch) {
+        setFcFront(frontMatch[1].trim());
+        setFcBack(backMatch[1].trim());
+      } else {
+        setFcBack(content.trim());
+      }
+    } catch (err) {
+      console.error('FC AI Error:', err);
+      alert('Не удалось сгенерировать карточку с помощью ИИ.');
+    } finally {
+      setFcAiLoading(false);
+    }
+  };
+
+  const handleFcSendAllToAnki = async () => {
+    if (!bookFlashcards.length) return;
+    setFcAnkiSending(true);
+    try {
+      const result = await pushFlashcardsToAnki(bookFlashcards, currentBook?.title, ankiSettings);
+      alert(`Anki: добавлено ${result.added} из ${result.total}${result.skipped ? `, пропущено: ${result.skipped}` : ''}`);
+    } catch (err) {
+      alert(`AnkiConnect: ${err.message}`);
+    } finally {
+      setFcAnkiSending(false);
+    }
+  };
 
   const sendAiCardToAnki = async (card) => {
     if (!card?.content && !card?.quote) return;
@@ -509,6 +530,25 @@ ${currentSectionText.slice(0, 12000)}
               </span>
             )}
           </button>
+
+          <button
+            onClick={() => setAiInspectorTab('flashcards')}
+            className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-medium transition-all cursor-pointer ${
+              aiInspectorTab === 'flashcards'
+                ? 'bg-primary text-white shadow-sm'
+                : 'text-textDim hover:text-white hover:bg-white/5'
+            }`}
+          >
+            <Layers size={13} />
+            <span>Карточки</span>
+            {bookFlashcards.length > 0 && (
+              <span className={`text-[10px] px-1.5 py-0.2 rounded-full ${
+                aiInspectorTab === 'flashcards' ? 'bg-white/20 text-white' : 'bg-white/10 text-textDim'
+              }`}>
+                {bookFlashcards.length}
+              </span>
+            )}
+          </button>
         </div>
 
         {/* Action icons */}
@@ -531,7 +571,7 @@ ${currentSectionText.slice(0, 12000)}
                 </button>
               )}
             </>
-          ) : (
+          ) : aiInspectorTab === 'chat' ? (
             <>
               {currentChat.length > 0 && (
                 <button
@@ -541,6 +581,22 @@ ${currentSectionText.slice(0, 12000)}
                 >
                   <Trash2 size={13} />
                   <span className="hidden sm:inline">Очистить</span>
+                </button>
+              )}
+            </>
+          ) : (
+            /* Flashcards tab actions */
+            <>
+              {bookFlashcards.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleFcSendAllToAnki}
+                  disabled={fcAnkiSending}
+                  className="text-xs text-primaryGlow hover:text-white flex items-center gap-1 px-2 py-1 rounded hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-50"
+                  title="Отправить все в Anki"
+                >
+                  {fcAnkiSending ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                  <span className="hidden sm:inline">Anki</span>
                 </button>
               )}
             </>
@@ -559,7 +615,7 @@ ${currentSectionText.slice(0, 12000)}
 
       {/* VIEW 1: Cards & Visualizer Mode */}
       {aiInspectorTab === 'cards' && (
-        <div className="flex-1 min-w-0 p-3 sm:p-4 overflow-y-auto overflow-x-hidden relative custom-scrollbar flex flex-col gap-4">
+        <div className="flex-1 min-w-0 p-3 sm:p-4 overflow-y-auto overflow-x-hidden relative custom-scrollbar flex flex-col gap-4 pb-28 md:pb-16">
           {/* Custom text input box */}
           {showInput && (
             <div className="p-3 rounded-xl bg-bgCard border border-primary/30 flex flex-col gap-2">
@@ -567,7 +623,7 @@ ${currentSectionText.slice(0, 12000)}
               <textarea
                 value={customText}
                 onChange={(e) => setCustomText(e.target.value)}
-                placeholder="Вставьте термин, алгоритм или фрагмент текста..."
+                placeholder="Вставьте термин, понятие или фрагмент текста..."
                 rows={3}
                 className="w-full bg-black/40 border border-borderColor rounded-lg p-2.5 text-xs text-textMain outline-none focus:border-primary resize-none"
               />
@@ -610,7 +666,7 @@ ${currentSectionText.slice(0, 12000)}
                   onClick={() => triggerAI('diagram')}
                   className="w-full py-2.5 px-3 rounded-lg bg-primary hover:bg-primaryGlow text-white text-xs font-semibold transition-all shadow-md shadow-primary/20 flex items-center justify-center gap-2 cursor-pointer"
                 >
-                  <Network size={14} /> 📊 Визуализировать архитектуру
+                  <Network size={14} /> 📊 Визуализировать схему / связи
                 </button>
                 
                 <div className="grid grid-cols-2 gap-2">
@@ -744,10 +800,17 @@ ${currentSectionText.slice(0, 12000)}
                       )}
                     </button>
                   )}
-                  {card.svg && (
+                  {!card.loading && (
                     <button 
-                      onClick={() => setFullscreenDiagram({ isOpen: true, svg: card.svg, title: card.quote })}
-                      title="На весь экран"
+                      type="button"
+                      onClick={() => {
+                        if (card.svg) {
+                          setFullscreenDiagram({ isOpen: true, svg: card.svg, title: card.quote });
+                        } else {
+                          setSelectedModalCard(card);
+                        }
+                      }}
+                      title="Развернуть в модалке"
                       className="p-1 rounded hover:bg-white/10 text-textDim hover:text-white transition-colors cursor-pointer"
                     >
                       <Maximize2 size={13} />
@@ -790,8 +853,20 @@ ${currentSectionText.slice(0, 12000)}
                       </div>
                     </div>
                   ) : (
-                    <div className="text-xs text-textMain leading-relaxed whitespace-pre-wrap break-words overflow-x-auto">
-                      {card.content}
+                    <div className="flex flex-col gap-2">
+                      <div className="text-xs text-textMain leading-relaxed break-words overflow-x-auto">
+                        <MarkdownRenderer content={card.content} />
+                      </div>
+                      <div className="flex justify-end pt-1 border-t border-white/5">
+                        <button
+                          type="button"
+                          onClick={() => setSelectedModalCard(card)}
+                          className="text-[11px] text-primaryGlow hover:text-white flex items-center gap-1 hover:underline cursor-pointer"
+                        >
+                          <Maximize2 size={11} />
+                          <span>Развернуть ответ в модалке</span>
+                        </button>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -859,7 +934,7 @@ ${currentSectionText.slice(0, 12000)}
                 </div>
                 <h4 className="text-sm font-semibold text-white mb-1">ИИ-тьютор по разделу</h4>
                 <p className="text-xs text-textMuted max-w-xs leading-relaxed mb-4">
-                  Задавайте любые вопросы по текущему параграфу: разбор алгоритмов, поиск неочевидных связей или сложные нюансы реализации.
+                  Задавайте любые вопросы по текущему разделу: разбор ключевых мыслей, поиск связей, контекст или примеры.
                 </p>
 
                 {/* Prompt suggestions */}
@@ -944,6 +1019,19 @@ ${currentSectionText.slice(0, 12000)}
                           </>
                         )}
                       </button>
+                      <button
+                        onClick={() =>
+                          setSelectedModalCard({
+                            title: '💬 Ответ ИИ-тьютора',
+                            content: msg.content,
+                            quote: sectionTitle ? `${chapterTitle ? chapterTitle + ' • ' : ''}${sectionTitle}` : ''
+                          })
+                        }
+                        className="text-[10px] text-textDim hover:text-primaryGlow transition-colors flex items-center gap-1 cursor-pointer"
+                        title="Развернуть в модалке"
+                      >
+                        <Maximize2 size={11} /> <span>Развернуть</span>
+                      </button>
                     </div>
                   )}
                 </div>
@@ -1000,6 +1088,154 @@ ${currentSectionText.slice(0, 12000)}
           </div>
         </div>
       )}
+
+      {/* VIEW 3: Inline Flashcard Creator */}
+      {aiInspectorTab === 'flashcards' && (
+        <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden">
+          {/* Cards list */}
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 custom-scrollbar flex flex-col gap-2">
+            {/* Section context */}
+            <div className="flex items-center gap-1.5 text-[11px] text-textDim mb-1">
+              <BookOpen size={12} className="text-primaryGlow shrink-0" />
+              <span className="truncate">{chapterTitle} • {sectionTitle}</span>
+            </div>
+
+            {bookFlashcards.length === 0 ? (
+              <div className="flex-1 flex flex-col items-center justify-center text-center py-8 opacity-70">
+                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-3">
+                  <Layers size={24} />
+                </div>
+                <h4 className="text-sm font-semibold text-white mb-1">Флешкарты</h4>
+                <p className="text-xs text-textMuted max-w-xs leading-relaxed">
+                  Создавайте карточки прямо во время чтения. Напишите вопрос и ответ внизу, или введите текст и нажмите «ИИ» для автоформулировки.
+                </p>
+              </div>
+            ) : (
+              <>
+                <button
+                  onClick={() => setFcShowAll(prev => !prev)}
+                  className="flex items-center justify-between w-full text-xs font-semibold text-textMain px-1 py-1 cursor-pointer hover:text-white transition-colors"
+                >
+                  <span>Карточки этой книги ({bookFlashcards.length})</span>
+                  {fcShowAll ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                </button>
+
+                {fcShowAll && (
+                  <div className="flex flex-col gap-1.5">
+                    {bookFlashcards.slice(0, 50).map((card) => (
+                      <div
+                        key={card.id}
+                        className="p-2.5 rounded-lg bg-bgCard border border-borderColor hover:border-white/20 transition-all flex flex-col gap-1.5 group"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div className="text-xs font-medium text-white leading-relaxed line-clamp-2 flex-1">
+                            {card.front}
+                          </div>
+                          <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => deleteFlashcard(currentBookId, card.id)}
+                              className="p-1 rounded text-textDim hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                              title="Удалить"
+                            >
+                              <Trash2 size={11} />
+                            </button>
+                          </div>
+                        </div>
+                        <div className="text-[11px] text-textMuted leading-relaxed pl-2 border-l-2 border-primary/30 line-clamp-2">
+                          {card.back}
+                        </div>
+                        <div className="flex items-center gap-2 text-[10px] text-textDim font-mono">
+                          <span>Повторений: {card.repetitions || 0}</span>
+                          <span>•</span>
+                          <span>Интервал: {card.interval || 1} дн.</span>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+
+          {/* Bottom inline card creator — always visible */}
+          <div className="p-3 bg-black/50 border-t border-borderColor shrink-0 flex flex-col gap-2">
+            {/* Success flash */}
+            {fcSavedFlash && (
+              <div className="flex items-center gap-1.5 text-xs text-accentEmerald bg-accentEmerald/10 border border-accentEmerald/20 rounded-lg px-2.5 py-1.5 animate-in fade-in duration-200">
+                <Check size={13} />
+                <span>{fcSavedFlash}</span>
+              </div>
+            )}
+
+            <div className="flex flex-col gap-1.5">
+              <textarea
+                ref={fcFrontRef}
+                value={fcFront}
+                onChange={(e) => setFcFront(e.target.value)}
+                placeholder="Вопрос (лицевая сторона)..."
+                rows={2}
+                className="w-full bg-bgCard border border-borderColor focus:border-primary rounded-lg p-2 text-xs text-textMain outline-none resize-none transition-colors"
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && e.ctrlKey) {
+                    e.preventDefault();
+                    handleFcSave();
+                  }
+                }}
+              />
+              <div className="flex items-center gap-1">
+                <textarea
+                  value={fcBack}
+                  onChange={(e) => setFcBack(e.target.value)}
+                  placeholder="Ответ (оборот)..."
+                  rows={2}
+                  className="flex-1 bg-bgCard border border-borderColor focus:border-primary rounded-lg p-2 text-xs text-textMain outline-none resize-none transition-colors"
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && e.ctrlKey) {
+                      e.preventDefault();
+                      handleFcSave();
+                    }
+                  }}
+                />
+              </div>
+            </div>
+
+            <div className="flex items-center justify-between gap-2">
+              <button
+                type="button"
+                disabled={fcAiLoading || (!fcFront && !fcBack)}
+                onClick={handleFcAiFormulate}
+                className="text-[11px] text-primaryGlow hover:text-white flex items-center gap-1 bg-primary/10 hover:bg-primary/20 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40 cursor-pointer border border-primary/20"
+                title="ИИ сформулирует вопрос и ответ из вашего текста"
+              >
+                {fcAiLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+                <span>ИИ сформулировать</span>
+              </button>
+
+              <button
+                type="button"
+                disabled={!fcFront.trim() || !fcBack.trim()}
+                onClick={handleFcSave}
+                className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primaryGlow disabled:opacity-40 text-white text-xs font-semibold transition-all cursor-pointer shadow-md shadow-primary/20 flex items-center gap-1.5"
+                title="Сохранить карточку (Ctrl+Enter)"
+              >
+                <Plus size={13} />
+                <span>Сохранить</span>
+              </button>
+            </div>
+
+            <div className="text-[10px] text-textDim px-1">
+              Ctrl+Enter — сохранить
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Fullscreen AI Card Modal */}
+      <CardModal
+        isOpen={Boolean(selectedModalCard)}
+        onClose={() => setSelectedModalCard(null)}
+        card={selectedModalCard}
+      />
 
       {/* Fullscreen Diagram Modal */}
       <DiagramModal 

@@ -6,6 +6,7 @@ import {
   EPUB_READER_THEME_IDS,
   EPUB_READER_THEME_LABELS,
   selectEpubReaderTheme,
+  applyThemeToContent,
   epubThemeIframeBackground,
 } from '../utils/epubReaderThemes';
 import { ChevronLeft, ChevronRight, PenTool, Sparkles, Bookmark, CheckCircle2, X } from 'lucide-react';
@@ -74,6 +75,11 @@ export default function EpubReader() {
   const navGenRef = useRef(0);
   const appliedCfisRef = useRef(new Set());
   const skipNavOnceRef = useRef(false);
+  const themeRef = useRef(epubReaderTheme);
+
+  useEffect(() => {
+    themeRef.current = epubReaderTheme;
+  }, [epubReaderTheme]);
 
   const [epubSelection, setEpubSelection] = useState(null);
 
@@ -187,7 +193,7 @@ export default function EpubReader() {
         });
         renditionRef.current = rendition;
 
-        selectEpubReaderTheme(rendition, epubReaderTheme);
+        selectEpubReaderTheme(rendition, themeRef.current);
 
         if (shouldResume) {
           await rendition.display(savedCfi);
@@ -219,6 +225,7 @@ export default function EpubReader() {
         });
 
         const syncIframeText = () => {
+          selectEpubReaderTheme(rendition, themeRef.current);
           try {
             const contents = rendition.getContents();
             const texts = (Array.isArray(contents) ? contents : [contents])
@@ -235,6 +242,7 @@ export default function EpubReader() {
 
         // epub.js шлёт selected, но не «снято выделение» — слушаем iframe
         rendition.hooks.content.register((contents) => {
+          applyThemeToContent(contents, themeRef.current);
           if (!contents?.document) return;
           let selTimer = null;
           const onSelectionChange = () => {

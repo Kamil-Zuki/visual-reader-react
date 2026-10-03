@@ -112,14 +112,15 @@ export default function FlashcardModal() {
     const targetLang = LANGUAGE_NAMES[language] || 'Russian';
     const inputText = backText || frontText;
 
-    const prompt = `You are an expert technical instructor. Based on this text/concept from "${currentBook?.title || 'Book'}":
+    const prompt = `You are an expert tutor creating high-yield flashcards for spaced repetition (Anki / SuperMemo).
+Based on this text, concept, or excerpt from the book "${currentBook?.title || 'Book'}" by ${currentBook?.author || 'Author'}:
 "${inputText}"
 
-Generate a high-yield flashcard for spaced repetition:
-1. FRONT: A clear, thought-provoking question or concept prompt testing the core mechanism or trade-off (under 25 words).
-2. BACK: A crisp, precise answer or explanation (under 50 words).
+Generate a single focused, high-retention flashcard:
+1. FRONT: A clear, specific question or prompt testing the core concept, meaning, significance, or mechanism (under 25 words).
+2. BACK: A crisp, precise, and complete answer or explanation (under 50 words).
 
-Respond strictly in this format:
+Respond STRICTLY in this format with nothing else:
 FRONT: <question>
 BACK: <answer>
 Language: ${targetLang}`;
@@ -144,12 +145,15 @@ Language: ${targetLang}`;
       const data = await res.json();
       const content = data.choices?.[0]?.message?.content || '';
 
-      const frontMatch = content.match(/FRONT:\s*(.*?)(?=\nBACK:|$)/is);
-      const backMatch = content.match(/BACK:\s*([\s\S]*)/is);
+      const frontMatch = content.match(/(?:\*{0,2}FRONT\*{0,2}|Вопрос):\s*(.*?)(?=\n(?:\*{0,2}BACK\*{0,2}|Ответ):|$)/is);
+      const backMatch = content.match(/(?:\*{0,2}BACK\*{0,2}|Ответ):\s*([\s\S]*)/is);
 
       if (frontMatch && backMatch) {
         setFrontText(frontMatch[1].trim());
         setBackText(backMatch[1].trim());
+      } else {
+        // Fallback: if format wasn't strictly followed, put content in back
+        setBackText(content.trim());
       }
     } catch (err) {
       console.error('Flashcard AI Error:', err);
@@ -519,7 +523,7 @@ Language: ${targetLang}`;
                 <textarea
                   value={frontText}
                   onChange={(e) => setFrontText(e.target.value)}
-                  placeholder="Например: В чем разница между LSM-tree и B-tree?"
+                  placeholder="Вопрос или ключевая мысль, например: В чем главная идея этой концепции?"
                   rows={3}
                   className="w-full bg-black/40 border border-borderColor rounded-xl p-3 text-xs text-textMain outline-none focus:border-primary resize-none"
                 />

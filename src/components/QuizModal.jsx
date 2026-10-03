@@ -90,7 +90,7 @@ export default function QuizModal() {
 
     const targetLang = LANGUAGE_NAMES[language] || 'Russian';
 
-    const systemPrompt = `You are a university professor in computer science. Generate 4 insightful, conceptual multiple-choice questions testing the reader's understanding of the following section from the book "${currentBook?.title || 'Technical Book'}".
+    const systemPrompt = `You are an expert educator and insightful reading mentor. Generate 4 insightful, conceptual multiple-choice questions testing the reader's deep understanding of the following section from the book "${currentBook?.title || 'Book'}".
 Current Section: "${sectionTitle}" (Chapter: "${chapterTitle}").
 
 Text excerpt:
@@ -102,7 +102,7 @@ CRITICAL RULES:
 - Output ONLY valid JSON array with 4 objects. No markdown formatting, no code block backticks, just raw JSON.
 - Each question must have:
   "id": integer (1 to 4)
-  "question": string (concise, testing understanding of architectural trade-offs, algorithms, or definitions)
+  "question": string (concise, testing understanding of core concepts, key ideas, nuances, or implications)
   "options": array of exactly 4 strings (one unambiguously correct, three plausible distractors)
   "correctIndex": integer from 0 to 3
   "explanation": string (1-2 sentences explaining why the correct answer is right and why others are wrong)
@@ -241,7 +241,7 @@ CRITICAL RULES:
               <Loader2 size={36} className="animate-spin text-primaryGlow" />
               <div className="text-sm font-semibold text-white">ИИ составляет персональный тест...</div>
               <p className="text-xs text-textMuted max-w-xs leading-relaxed">
-                Анализируем ключевые принципы, архитектурные решения и термины раздела «{sectionTitle}».
+                Анализируем ключевые мысли, понятия и выводы раздела «{sectionTitle}».
               </p>
             </div>
           )}
