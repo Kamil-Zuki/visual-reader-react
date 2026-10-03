@@ -208,7 +208,8 @@ export default function SettingsModal() {
         <div className="flex items-center justify-between border-b border-borderColor pb-3">
           <div className="flex items-center gap-2 text-lg font-semibold text-white">
             <Cpu className="text-primary" size={20} />
-            Настройки ИИ и Читалки
+            <span>Настройки ИИ и Читалки</span>
+            <span className="text-[11px] font-mono font-medium px-2 py-0.5 rounded-full bg-primary/20 text-primaryGlow border border-primary/30 ml-2">v0.4.0</span>
           </div>
           <button 
             onClick={() => setSettingsOpen(false)}

@@ -21,7 +21,8 @@ import {
   Layers,
   BookMarked,
   BarChart2,
-  Award
+  Award,
+  Map
 } from 'lucide-react';
 
 import Sidebar from './components/Sidebar';
@@ -40,6 +41,7 @@ import FlashcardModal from './components/FlashcardModal';
 import GlossaryModal from './components/GlossaryModal';
 import StatsModal from './components/StatsModal';
 import PanelResizer from './components/PanelResizer';
+import GlobalGraphView from './components/GlobalGraphView';
 import { initSyncServiceFromSettings, connectSync } from './services/supabaseSyncService';
 
 function App() {
@@ -59,6 +61,7 @@ function App() {
 
   const [installPrompt, setInstallPrompt] = useState(null);
   const [isInstalled, setIsInstalled] = useState(false);
+  const [globalViewMode, setGlobalViewMode] = useState('library'); // 'library' | 'graph'
 
   // Keyboard shortcuts: Ctrl+B (sidebar), Ctrl+I (inspector), Ctrl+K / Ctrl+F (search)
   useEffect(() => {
@@ -218,7 +221,7 @@ function App() {
       <nav className="w-16 md:w-[72px] bg-bgSidebar border-r border-borderColor flex flex-col items-center py-4 gap-4 z-40 shrink-0">
         <div 
           className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primaryGlow flex items-center justify-center text-white shadow-sm shadow-primary/20 mb-2 cursor-pointer"
-          onClick={() => setLibraryOpen(true)}
+          onClick={() => { clearEpubResume(); setCurrentBook(null, ''); setGlobalViewMode('library'); }}
           title="На главную"
         >
           <BookOpen size={20} />
@@ -226,9 +229,26 @@ function App() {
 
         {/* Main Actions */}
         <div className="flex flex-col gap-2 w-full px-2">
-          <button onClick={() => setLibraryOpen(true)} className="p-3 rounded-xl text-textDim hover:text-white hover:bg-white/5 transition-colors flex justify-center w-full" title="Библиотека">
+          <button 
+            onClick={() => { 
+              if (hasBook) setLibraryOpen(true);
+              else setGlobalViewMode('library'); 
+            }} 
+            className="p-3 rounded-xl text-textDim hover:text-white hover:bg-white/5 transition-colors flex justify-center w-full" 
+            title="Библиотека"
+          >
             <Library size={20} />
           </button>
+          <button 
+            onClick={() => { clearEpubResume(); setCurrentBook(null, ''); setGlobalViewMode('graph'); }} 
+            className={`p-3 rounded-xl flex justify-center w-full transition-colors ${!hasBook && globalViewMode === 'graph' ? 'text-primaryGlow bg-primary/10' : 'text-textDim hover:text-white hover:bg-white/5'}`} 
+            title="Глобальный Граф (Второй Мозг)"
+          >
+            <Map size={20} />
+          </button>
+          
+          <div className="h-px bg-white/10 w-8 mx-auto my-1"></div>
+
           <button onClick={() => hasBook && setSearchOpen(true)} disabled={!hasBook} className={`p-3 rounded-xl flex justify-center w-full transition-colors ${hasBook ? 'text-textDim hover:text-white hover:bg-white/5' : 'text-textDim/30'}`} title="Поиск (Ctrl+K)">
             <Search size={20} />
           </button>
@@ -255,7 +275,7 @@ function App() {
           <button onClick={() => setSyncModalOpen(true)} className={`p-3 rounded-xl flex justify-center w-full transition-colors ${syncStatus === 'synced' ? 'text-accentEmerald bg-accentEmerald/10' : syncStatus === 'error' ? 'text-red-400 bg-red-400/10' : 'text-textDim hover:text-white hover:bg-white/5'}`} title="Синхронизация (Supabase)">
             <Cloud size={20} />
           </button>
-          <button onClick={() => setSettingsOpen(true)} className="p-3 rounded-xl text-textDim hover:text-white hover:bg-white/5 transition-colors flex justify-center w-full relative" title="Настройки">
+          <button onClick={() => setSettingsOpen(true)} className="p-3 rounded-xl text-textDim hover:text-white hover:bg-white/5 transition-colors flex justify-center w-full relative" title="Настройки (v0.4.0)">
             <Settings size={20} />
             <div className={`absolute top-2.5 right-2.5 w-1.5 h-1.5 rounded-full ${apiKey ? 'bg-accentEmerald' : 'bg-red-500'}`}></div>
           </button>
@@ -316,9 +336,13 @@ function App() {
       {/* Main Layout: Desktop (3 columns with resizers) vs Mobile (active tab) */}
       <div className="flex flex-1 overflow-hidden relative">
         {!hasBook ? (
-          <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8 md:p-12 bg-bgMain">
-            <LibraryPanel layout="embedded" />
-          </div>
+          globalViewMode === 'graph' ? (
+            <GlobalGraphView />
+          ) : (
+            <div className="flex-1 overflow-y-auto custom-scrollbar p-4 sm:p-8 md:p-12 bg-bgMain">
+              <LibraryPanel layout="embedded" />
+            </div>
+          )
         ) : (
         <>
         {/* Desktop Layout */}

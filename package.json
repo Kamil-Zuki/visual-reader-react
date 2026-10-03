@@ -1,7 +1,7 @@
 {
   "name": "visual-reader-react",
   "private": true,
-  "version": "0.3.11",
+  "version": "0.4.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -23,6 +23,7 @@
     "qrcode": "^1.5.4",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
+    "react-force-graph-2d": "^1.29.2",
     "y-webrtc": "^10.3.0",
     "yjs": "^13.6.32",
     "zustand": "^5.0.15"

@@ -1,11 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useStore } from '../store/useStore';
 import { X, Maximize2, Map, BookOpen } from 'lucide-react';
-import mermaid from 'mermaid';
-import DiagramModal from './DiagramModal';
+import ForceGraph2D from 'react-force-graph-2d';
 import {
-  buildTocMermaidGraph,
-  attachKnowledgeMapClicks,
+  buildTocForceGraph,
   isDdiaConceptBook,
 } from '../utils/knowledgeMap';
 import {
@@ -14,51 +12,6 @@ import {
   getEffectiveReadSectionIds,
 } from '../utils/bookProgress';
 
-const DDIA_CONCEPT_GRAPH = `
-graph TD
-    DataSystems[Data Systems] --> Reliability[Reliability]
-    DataSystems --> Scalability[Scalability]
-    DataSystems --> Maintainability[Maintainability]
-    DataSystems --> DataModels[Data Models]
-    DataModels --> Relational[Relational]
-    DataModels --> Document[Document / NoSQL]
-    DataModels --> GraphModel[Graph]
-    DataSystems --> Storage[Storage & Retrieval]
-    Storage --> SSTables[SSTables & LSM-Trees]
-    Storage --> BTree[B-Trees]
-    DataSystems --> Distributed[Distributed Data]
-    Distributed --> Replication[Replication]
-    Distributed --> Partitioning[Partitioning / Sharding]
-    Distributed --> Transactions[Transactions]
-    Replication --> LeaderBased[Leader-based]
-    Replication --> MultiLeader[Multi-leader]
-    Replication --> Leaderless[Leaderless]
-    Transactions --> ACID[ACID Properties]
-    Transactions --> Serializability[Serializability]
-    Distributed --> Consensus[Consistency & Consensus]
-    Consensus --> Linearizability[Linearizability]
-    Consensus --> TwoPC[2-Phase Commit]
-    DataSystems --> DerivedData[Derived Data]
-    DerivedData --> Batch[Batch Processing]
-    DerivedData --> Stream[Stream Processing]
-    classDef default fill:#1e1e2d,stroke:#818cf8,stroke-width:1px,color:#fff;
-    classDef root fill:#6366f1,stroke:#818cf8,stroke-width:2px,color:#fff;
-    class DataSystems root;
-`;
-
-mermaid.initialize({
-  startOnLoad: false,
-  theme: 'dark',
-  securityLevel: 'loose',
-  themeVariables: {
-    primaryColor: '#6366f1',
-    primaryTextColor: '#fff',
-    primaryBorderColor: '#818cf8',
-    lineColor: '#06b6d4',
-    secondaryColor: '#1e1e2d',
-    tertiaryColor: '#121620',
-  },
-});
 
 export default function ConceptGraphModal() {
   const {
@@ -70,16 +23,15 @@ export default function ConceptGraphModal() {
     activeChapterIdx,
     activeSectionIdx,
     setActiveChapter,
+    flashcards,
+    glossary,
+    bookmarks,
+    highlights,
   } = useStore();
 
   const [view, setView] = useState('toc');
-  const [svg, setSvg] = useState('');
   const [isFullscreen, setFullscreen] = useState(false);
-  const [renderError, setRenderError] = useState('');
-  const [compactHint, setCompactHint] = useState(false);
   const containerRef = useRef(null);
-  const nodeMetaRef = useRef({});
-  const renderGenRef = useRef(0);
 
   const showConceptTab = isDdiaConceptBook(currentBook);
 
@@ -97,67 +49,38 @@ export default function ConceptGraphModal() {
     [currentBook, readSections, currentBookId]
   );
 
-  const diagramSource = useMemo(() => {
+  const graphData = useMemo(() => {
     if (view === 'concepts') {
-      return { diagram: DDIA_CONCEPT_GRAPH, nodeMeta: {}, compact: false };
+      return { nodes: [], links: [], nodeMeta: {} }; // Mock for now or implement DDIA concepts later
     }
-    return buildTocMermaidGraph(currentBook, {
+    return buildTocForceGraph(currentBook, {
       readIdSet,
       activeChapterIdx,
       activeSectionIdx,
+      bookFlashcards: flashcards[currentBookId] || [],
+      bookGlossary: glossary[currentBookId] || [],
+      bookBookmarks: bookmarks[currentBookId] || [],
+      bookHighlights: highlights[currentBookId] || [],
     });
-  }, [view, currentBook, readIdSet, activeChapterIdx, activeSectionIdx]);
+  }, [view, currentBook, readIdSet, activeChapterIdx, activeSectionIdx, flashcards, glossary, bookmarks, highlights, currentBookId]);
 
   const navigateToNode = useCallback(
-    (cIdx, sIdx) => {
-      setActiveChapter(cIdx, sIdx);
-      setGraphOpen(false);
-      setFullscreen(false);
+    (node) => {
+      if (!node) return;
+      const target = graphData.nodeMeta[node.id];
+      if (target) {
+        setActiveChapter(target.cIdx, target.sIdx);
+        setGraphOpen(false);
+        setFullscreen(false);
+      }
     },
-    [setActiveChapter, setGraphOpen]
+    [setActiveChapter, setGraphOpen, graphData]
   );
 
   useEffect(() => {
     if (!isGraphOpen) return;
     if (view === 'concepts' && !showConceptTab) setView('toc');
   }, [isGraphOpen, view, showConceptTab]);
-
-  useEffect(() => {
-    if (!isGraphOpen) {
-      setSvg('');
-      setRenderError('');
-      return;
-    }
-
-    const gen = ++renderGenRef.current;
-    setSvg('');
-    setRenderError('');
-    setCompactHint(diagramSource.compact);
-
-    const id = `knowledge_map_${view}_${renderGenRef.current}`;
-    mermaid
-      .render(id, diagramSource.diagram)
-      .then(({ svg: renderedSvg }) => {
-        if (gen !== renderGenRef.current) return;
-        nodeMetaRef.current = diagramSource.nodeMeta;
-        setSvg(renderedSvg);
-      })
-      .catch((err) => {
-        if (gen !== renderGenRef.current) return;
-        console.error('[KnowledgeMap]', err);
-        setRenderError('Не удалось построить граф. Попробуйте вкладку «Темы DDIA» или обновите оглавление EPUB.');
-      });
-  }, [isGraphOpen, diagramSource, view]);
-
-  useEffect(() => {
-    if (!svg || !containerRef.current || view !== 'toc') return undefined;
-    const detach = attachKnowledgeMapClicks(
-      containerRef.current,
-      nodeMetaRef.current,
-      navigateToNode
-    );
-    return detach;
-  }, [svg, view, navigateToNode]);
 
   if (!isGraphOpen) return null;
 
@@ -237,32 +160,84 @@ export default function ConceptGraphModal() {
           {view === 'toc' && (
             <div className="flex flex-wrap gap-3 px-4 py-2 text-[10px] text-textDim border-b border-white/5">
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-indigo-500 border border-indigo-300" /> текущий
+                <span className="w-2.5 h-2.5 rounded-full bg-[#4338ca] shadow-[0_0_8px_rgba(67,56,202,0.8)]" /> текущий
               </span>
               <span className="flex items-center gap-1.5">
-                <span className="w-2.5 h-2.5 rounded-sm bg-emerald-900 border border-emerald-400" /> прочитан
+                <span className="w-2.5 h-2.5 rounded-full bg-[#064e3b]" /> прочитан
               </span>
-              {compactHint && (
-                <span className="text-amber-400/90">
-                  Много разделов — показаны только главы (клик откроет начало главы)
-                </span>
-              )}
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#eab308]" /> карточка
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#f43f5e]" /> хайлайт
+              </span>
+              <span className="flex items-center gap-1.5">
+                <span className="w-2.5 h-2.5 rounded-full bg-[#10b981]" /> термин
+              </span>
             </div>
           )}
 
-          <div className="flex-1 overflow-auto p-6 bg-[#0a0d14] flex custom-scrollbar min-h-[280px]">
-            {renderError ? (
-              <p className="text-sm text-red-300 m-auto text-center max-w-md">{renderError}</p>
-            ) : svg ? (
-              <div
-                ref={containerRef}
-                className="m-auto flex items-center justify-center [&_svg]:max-w-full [&_svg]:h-auto"
-                onClick={(e) => {
-                  if (e.target.closest('g.node')) return;
-                  setFullscreen(true);
+          <div className="flex-1 overflow-hidden bg-bgMain relative flex" ref={containerRef}>
+            {graphData.nodes.length > 0 ? (
+              <ForceGraph2D
+                width={containerRef.current ? containerRef.current.clientWidth : 800}
+                height={containerRef.current ? containerRef.current.clientHeight : 600}
+                graphData={graphData}
+                nodeAutoColorBy="group"
+                nodeRelSize={6}
+                nodeColor={node => node.color}
+                nodeLabel="name"
+                onNodeClick={navigateToNode}
+                linkColor={() => 'rgba(255,255,255,0.2)'}
+                nodeCanvasObject={(node, ctx, globalScale) => {
+                  const isZettel = ['flashcard', 'highlight', 'glossary'].includes(node.type);
+                  const isRoot = node.type === 'root';
+                  
+                  // Draw Node Circle
+                  ctx.beginPath();
+                  ctx.arc(node.x, node.y, node.val, 0, 2 * Math.PI, false);
+                  ctx.fillStyle = node.color;
+                  if (node.type === 'highlight' || node.type === 'flashcard' || node.type === 'glossary') {
+                     ctx.shadowColor = node.color;
+                     ctx.shadowBlur = 10;
+                  } else {
+                     ctx.shadowBlur = 0;
+                  }
+                  ctx.fill();
+
+                  // Draw Label
+                  const label = node.name;
+                  const fontSize = isRoot ? 14 / globalScale : (isZettel ? 10 / globalScale : 12 / globalScale);
+                  ctx.font = `${fontSize}px Sans-Serif`;
+                  const textWidth = ctx.measureText(label).width;
+                  const bckgDimensions = [textWidth, fontSize].map(n => n + fontSize * 0.2);
+
+                  // Label background
+                  ctx.shadowBlur = 0; // reset shadow for text bg
+                  ctx.fillStyle = 'rgba(10, 13, 20, 0.8)';
+                  // Position label slightly below the node
+                  const labelY = node.y + node.val + fontSize;
+                  ctx.fillRect(node.x - bckgDimensions[0] / 2, labelY - bckgDimensions[1] / 2, ...bckgDimensions);
+
+                  ctx.textAlign = 'center';
+                  ctx.textBaseline = 'middle';
+                  ctx.fillStyle = isZettel ? node.color : '#e2e8f0';
+                  ctx.fillText(label, node.x, labelY);
+
+                  node.__bckgDimensions = bckgDimensions; // to re-use in nodePointerAreaPaint
+                  node.__labelY = labelY;
                 }}
-                role="presentation"
-                dangerouslySetInnerHTML={{ __html: svg }}
+                nodePointerAreaPaint={(node, color, ctx) => {
+                  ctx.fillStyle = color;
+                  ctx.beginPath();
+                  ctx.arc(node.x, node.y, node.val + 2, 0, 2 * Math.PI, false);
+                  ctx.fill();
+                  
+                  const bckgDimensions = node.__bckgDimensions;
+                  if (bckgDimensions) {
+                     ctx.fillRect(node.x - bckgDimensions[0] / 2, node.__labelY - bckgDimensions[1] / 2, ...bckgDimensions);
+                  }
+                }}
               />
             ) : (
               <div className="spinner m-auto" />
@@ -270,13 +245,6 @@ export default function ConceptGraphModal() {
           </div>
         </div>
       </div>
-
-      <DiagramModal
-        isOpen={isFullscreen}
-        onClose={() => setFullscreen(false)}
-        svgContent={svg}
-        title={view === 'toc' ? `Карта: ${currentBook?.title || 'книга'}` : 'Темы DDIA'}
-      />
     </>
   );
 }
