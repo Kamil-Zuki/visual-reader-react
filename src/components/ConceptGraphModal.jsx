@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react';
 import { useStore } from '../store/useStore';
-import { X, Maximize2, Map, BookOpen } from 'lucide-react';
+import { X, Maximize2, Minimize2, Map, BookOpen } from 'lucide-react';
 import ForceGraph2D from 'react-force-graph-2d';
 import {
   buildTocForceGraph,
@@ -11,7 +11,6 @@ import {
   countEffectiveReadSections,
   getEffectiveReadSectionIds,
 } from '../utils/bookProgress';
-
 
 export default function ConceptGraphModal() {
   const {
@@ -31,6 +30,7 @@ export default function ConceptGraphModal() {
 
   const [view, setView] = useState('toc');
   const [isFullscreen, setFullscreen] = useState(false);
+  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
   const containerRef = useRef(null);
 
   const showConceptTab = isDdiaConceptBook(currentBook);
@@ -82,6 +82,22 @@ export default function ConceptGraphModal() {
     if (view === 'concepts' && !showConceptTab) setView('toc');
   }, [isGraphOpen, view, showConceptTab]);
 
+  useEffect(() => {
+    if (!isGraphOpen || !containerRef.current) return;
+    const updateSize = () => {
+      if (containerRef.current) {
+        const { clientWidth, clientHeight } = containerRef.current;
+        if (clientWidth > 0 && clientHeight > 0) {
+          setDimensions({ width: clientWidth, height: clientHeight });
+        }
+      }
+    };
+    updateSize();
+    const observer = new ResizeObserver(updateSize);
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [isGraphOpen, isFullscreen, view]);
+
   if (!isGraphOpen) return null;
 
   const totalSections = (currentBook?.chapters || []).reduce(
@@ -92,7 +108,7 @@ export default function ConceptGraphModal() {
   return (
     <>
       <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 sm:p-6 bg-black/60 backdrop-blur-sm animate-in fade-in duration-200">
-        <div className="bg-bgMain border border-borderColor rounded-2xl w-full max-w-4xl max-h-[90vh] flex flex-col shadow-2xl shadow-black overflow-hidden animate-in zoom-in-95 duration-200">
+        <div className={`bg-bgMain border border-borderColor rounded-2xl w-full ${isFullscreen ? 'max-w-[98vw] h-[95vh]' : 'max-w-4xl h-[85vh]'} flex flex-col shadow-2xl shadow-black overflow-hidden animate-in zoom-in-95 duration-200`}>
           <div className="flex items-start justify-between gap-3 p-4 sm:p-5 border-b border-borderColor bg-bgSidebar">
             <div className="min-w-0">
               <h2 className="text-lg sm:text-xl font-bold text-white leading-tight">
@@ -112,13 +128,13 @@ export default function ConceptGraphModal() {
             <div className="flex items-center gap-2 shrink-0">
               <button
                 type="button"
-                onClick={() => setFullscreen(true)}
-                disabled={!svg}
+                onClick={() => setFullscreen(prev => !prev)}
+                disabled={graphData.nodes.length === 0}
                 className="p-2 sm:px-3 sm:py-1.5 rounded-lg border border-borderColor bg-white/5 hover:bg-white/10 text-textMain hover:text-white transition-colors flex items-center gap-2 disabled:opacity-40"
-                title="На весь экран"
+                title={isFullscreen ? "Свернуть" : "На весь экран"}
               >
-                <Maximize2 size={16} />
-                <span className="hidden sm:inline text-sm">Увеличить</span>
+                {isFullscreen ? <Minimize2 size={16} /> : <Maximize2 size={16} />}
+                <span className="hidden sm:inline text-sm">{isFullscreen ? 'Свернуть' : 'Увеличить'}</span>
               </button>
               <button
                 type="button"
@@ -180,8 +196,8 @@ export default function ConceptGraphModal() {
           <div className="flex-1 overflow-hidden bg-bgMain relative flex" ref={containerRef}>
             {graphData.nodes.length > 0 ? (
               <ForceGraph2D
-                width={containerRef.current ? containerRef.current.clientWidth : 800}
-                height={containerRef.current ? containerRef.current.clientHeight : 600}
+                width={dimensions.width}
+                height={dimensions.height}
                 graphData={graphData}
                 nodeAutoColorBy="group"
                 nodeRelSize={6}

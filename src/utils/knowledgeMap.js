@@ -202,9 +202,9 @@ export function buildTocForceGraph(book, options = {}) {
   };
 
   if (!compact) {
-    addZettelNodes(bookFlashcards, 'flashcard', '#eab308', (c) => c.front); // yellow
-    addZettelNodes(bookGlossary, 'glossary', '#10b981', (g) => g.term); // emerald
-    addZettelNodes(bookHighlights, 'highlight', '#f43f5e', (h) => h.text.substring(0, 20) + '...'); // rose
+    addZettelNodes(bookFlashcards, 'flashcard', '#eab308', (c) => c?.front || c?.question || 'Карточка');
+    addZettelNodes(bookGlossary, 'glossary', '#10b981', (g) => g?.term || 'Термин');
+    addZettelNodes(bookHighlights, 'highlight', '#f43f5e', (h) => String(h?.text || h?.selectedText || 'Заметка').substring(0, 20) + '...');
   }
 
   return { nodes, links, nodeMeta };
