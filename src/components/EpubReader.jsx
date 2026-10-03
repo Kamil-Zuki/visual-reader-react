@@ -123,6 +123,8 @@ export default function EpubReader() {
     }
   };
 
+  const applyStoredEpubHighlightsRef = useRef(null);
+
   const applyStoredEpubHighlights = useCallback(() => {
     const rendition = renditionRef.current;
     if (!rendition || !currentBookId) return;
@@ -155,13 +157,34 @@ export default function EpubReader() {
       if (!nextCfis.has(cfi)) {
         try {
           rendition.annotations.remove(cfi, 'highlight');
-        } catch {
-          /* ignore */
+          
+          // Fallback manual cleanup for epub.js bug where visual overlay remains
+          const iframe = rendition.manager?.views?._views?.[0]?.iframe || rendition.getContents()?.[0]?.document;
+          if (iframe) {
+            const doc = iframe.nodeType === 9 ? iframe : iframe.contentDocument;
+            if (doc) {
+              const elements = doc.querySelectorAll('.vr-epub-hl');
+              elements.forEach(el => {
+                // Remove elements that might belong to removed cfis
+                // epub.js usually adds data-epubjs-annotation attribute
+                const annotCfi = el.getAttribute('data-epubcfi');
+                if (!annotCfi || annotCfi === cfi) {
+                   el.remove();
+                }
+              });
+            }
+          }
+        } catch (err) {
+          console.warn('[EpubReader] Manual annotation remove fallback failed:', err);
         }
         appliedCfisRef.current.delete(cfi);
       }
     }
   }, [currentBookId, highlights]);
+
+  useEffect(() => {
+    applyStoredEpubHighlightsRef.current = applyStoredEpubHighlights;
+  }, [applyStoredEpubHighlights]);
 
   useEffect(() => {
     if (!currentBook || currentBook.format !== 'epub' || !hostRef.current) return;
@@ -235,7 +258,9 @@ export default function EpubReader() {
           } catch {
             /* ignore */
           }
-          applyStoredEpubHighlights();
+          if (applyStoredEpubHighlightsRef.current) {
+            applyStoredEpubHighlightsRef.current();
+          }
         };
 
         rendition.on('rendered', syncIframeText);

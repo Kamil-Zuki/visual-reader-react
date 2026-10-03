@@ -78,13 +78,23 @@ export default function AIInspector() {
   const chatInputRef = useRef(null);
 
   // Flashcard inline creator states
-  const [fcFront, setFcFront] = useState('');
-  const [fcBack, setFcBack] = useState('');
+  const targetAnkiFields = ankiSettings?.modelFields?.length > 0 ? ankiSettings.modelFields : ['Front', 'Back'];
+  const [fcFields, setFcFields] = useState({});
   const [fcAiLoading, setFcAiLoading] = useState(false);
   const [fcAnkiSending, setFcAnkiSending] = useState(false);
   const [fcSavedFlash, setFcSavedFlash] = useState(null);
-  const [fcShowAll, setFcShowAll] = useState(true);
+  const [fcShowAll, setFcShowAll] = useState(false);
   const fcFrontRef = useRef(null);
+
+  useEffect(() => {
+    setFcFields(prev => {
+      const next = { ...prev };
+      targetAnkiFields.forEach(f => {
+        if (next[f] === undefined) next[f] = '';
+      });
+      return next;
+    });
+  }, [ankiSettings?.modelFields]);
 
   // Context derived from current book state
   const chapters = currentBook?.chapters || currentBook?.structure || [];
@@ -380,23 +390,33 @@ ${currentSectionText.slice(0, 12000)}
 
   // Flashcard inline helpers
   const handleFcSave = () => {
-    if (!fcFront.trim() || !fcBack.trim()) return;
+    const frontField = targetAnkiFields[0];
+    const backField = targetAnkiFields[1] || targetAnkiFields[0];
+    
+    if (!Object.values(fcFields).some(val => val.trim())) return;
+
     addFlashcard(currentBookId, {
-      front: fcFront.trim(),
-      back: fcBack.trim(),
+      front: fcFields[frontField]?.trim() || '',
+      back: fcFields[backField]?.trim() || '',
+      ankiFields: { ...fcFields },
       chapterIdx: activeChapterIdx,
       sectionIdx: activeSectionIdx,
       sectionTitle: currentSection?.title || '',
     });
-    setFcFront('');
-    setFcBack('');
+    
+    setFcFields(prev => {
+      const next = { ...prev };
+      Object.keys(next).forEach(k => next[k] = '');
+      return next;
+    });
+    
     setFcSavedFlash('Карточка сохранена!');
     setTimeout(() => setFcSavedFlash(null), 2000);
     fcFrontRef.current?.focus();
   };
 
   const handleFcAiFormulate = async () => {
-    const input = (fcFront || fcBack).trim();
+    const input = Object.values(fcFields).filter(v => v.trim()).join('\n').trim();
     if (!input) return;
     if (!apiKey) {
       setSettingsOpen(true);
@@ -405,17 +425,19 @@ ${currentSectionText.slice(0, 12000)}
     }
     setFcAiLoading(true);
     const targetLang = LANGUAGE_NAMES[language] || 'Russian';
+    const fieldsList = targetAnkiFields.join(', ');
+    const formatReq = targetAnkiFields.map(f => `${f}: <text>`).join('\n');
+    
     const prompt = `You are an expert tutor creating high-yield flashcards for spaced repetition.
 Based on this text, concept, or excerpt from the book "${currentBook?.title || 'Book'}" by ${currentBook?.author || 'Author'}:
 "${input}"
 
-Generate a single focused, high-retention flashcard:
-1. FRONT: A clear, specific question or prompt testing the core concept (under 25 words).
-2. BACK: A crisp, precise answer or explanation (under 50 words).
+Generate a single focused, high-retention flashcard that fills out EXACTLY the following fields: ${fieldsList}.
+Make it concise and focused.
 
 Respond STRICTLY in this format with nothing else:
-FRONT: <question>
-BACK: <answer>
+${formatReq}
+
 Language: ${targetLang}`;
 
     try {
@@ -436,14 +458,34 @@ Language: ${targetLang}`;
       if (!res.ok) throw new Error('Ошибка API');
       const data = await res.json();
       const content = data.choices?.[0]?.message?.content || '';
-      const frontMatch = content.match(/(?:\*{0,2}FRONT\*{0,2}|Вопрос):\s*(.*?)(?=\n(?:\*{0,2}BACK\*{0,2}|Ответ):|$)/is);
-      const backMatch = content.match(/(?:\*{0,2}BACK\*{0,2}|Ответ):\s*([\s\S]*)/is);
-      if (frontMatch && backMatch) {
-        setFcFront(frontMatch[1].trim());
-        setFcBack(backMatch[1].trim());
-      } else {
-        setFcBack(content.trim());
+      
+      const newFields = { ...fcFields };
+      let currentField = null;
+      const lines = content.split('\n');
+      
+      for (const line of lines) {
+        // Look for "FieldName:" or "**FieldName**:" at the start of the line
+        const matchField = targetAnkiFields.find(f => {
+          const regex = new RegExp(`^(?:\\*{0,2}${f}\\*{0,2}):\\s*(.*)`, 'i');
+          return regex.test(line);
+        });
+
+        if (matchField) {
+          currentField = matchField;
+          const regex = new RegExp(`^(?:\\*{0,2}${matchField}\\*{0,2}):\\s*(.*)`, 'i');
+          const val = line.match(regex)[1].trim();
+          newFields[currentField] = val;
+        } else if (currentField) {
+          newFields[currentField] += (newFields[currentField] ? '\n' : '') + line;
+        }
       }
+      
+      // Fallback if parsing failed completely
+      if (!Object.values(newFields).some(v => v.trim() !== '')) {
+         newFields[targetAnkiFields[1] || targetAnkiFields[0]] = content.trim();
+      }
+
+      setFcFields(newFields);
     } catch (err) {
       console.error('FC AI Error:', err);
       alert('Не удалось сгенерировать карточку с помощью ИИ.');
@@ -459,9 +501,25 @@ Language: ${targetLang}`;
       const result = await pushFlashcardsToAnki(bookFlashcards, currentBook?.title, ankiSettings);
       alert(`Anki: добавлено ${result.added} из ${result.total}${result.skipped ? `, пропущено: ${result.skipped}` : ''}`);
     } catch (err) {
-      alert(`AnkiConnect: ${err.message}`);
+      alert(`AnkiConnect: ${err.message || err}`);
     } finally {
       setFcAnkiSending(false);
+    }
+  };
+
+  const handleSendSingleFlashcardToAnki = async (card) => {
+    setAnkiCardSendingId(card.id);
+    try {
+      const result = await pushFlashcardsToAnki([card], currentBook?.title, ankiSettings);
+      alert(
+        result.added
+          ? 'Карточка добавлена в Anki.'
+          : 'Anki не добавил заметку (возможно, дубликат).'
+      );
+    } catch (err) {
+      alert(`AnkiConnect: ${err.message || err}`);
+    } finally {
+      setAnkiCardSendingId(null);
     }
   };
 
@@ -476,7 +534,7 @@ Language: ${targetLang}`;
           : 'Anki не добавил заметку (возможно, дубликат).'
       );
     } catch (err) {
-      alert(`AnkiConnect: ${err.message}`);
+      alert(`AnkiConnect: ${err.message || err}`);
     } finally {
       setAnkiCardSendingId(null);
     }
@@ -1114,9 +1172,12 @@ Language: ${targetLang}`;
               <>
                 <button
                   onClick={() => setFcShowAll(prev => !prev)}
-                  className="flex items-center justify-between w-full text-xs font-semibold text-textMain px-1 py-1 cursor-pointer hover:text-white transition-colors"
+                  className="flex items-center justify-between w-full text-xs font-semibold text-textMain px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer transition-all hover:text-white"
                 >
-                  <span>Карточки этой книги ({bookFlashcards.length})</span>
+                  <span className="flex items-center gap-2">
+                    <Layers size={14} className="text-primaryGlow" />
+                    Карточки этой книги ({bookFlashcards.length})
+                  </span>
                   {fcShowAll ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                 </button>
 
@@ -1132,6 +1193,14 @@ Language: ${targetLang}`;
                             {card.front}
                           </div>
                           <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <button
+                              onClick={() => handleSendSingleFlashcardToAnki(card)}
+                              disabled={ankiCardSendingId === card.id}
+                              className="p-1 rounded text-primary hover:text-primaryGlow hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-50"
+                              title="Отправить в Anki"
+                            >
+                              {ankiCardSendingId === card.id ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
+                            </button>
                             <button
                               onClick={() => deleteFlashcard(currentBookId, card.id)}
                               className="p-1 rounded text-textDim hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
@@ -1168,27 +1237,15 @@ Language: ${targetLang}`;
             )}
 
             <div className="flex flex-col gap-1.5">
-              <textarea
-                ref={fcFrontRef}
-                value={fcFront}
-                onChange={(e) => setFcFront(e.target.value)}
-                placeholder="Вопрос (лицевая сторона)..."
-                rows={2}
-                className="w-full bg-bgCard border border-borderColor focus:border-primary rounded-lg p-2 text-xs text-textMain outline-none resize-none transition-colors"
-                onKeyDown={(e) => {
-                  if (e.key === 'Enter' && e.ctrlKey) {
-                    e.preventDefault();
-                    handleFcSave();
-                  }
-                }}
-              />
-              <div className="flex items-center gap-1">
+              {targetAnkiFields.map((field, idx) => (
                 <textarea
-                  value={fcBack}
-                  onChange={(e) => setFcBack(e.target.value)}
-                  placeholder="Ответ (оборот)..."
+                  key={field}
+                  ref={idx === 0 ? fcFrontRef : null}
+                  value={fcFields[field] || ''}
+                  onChange={(e) => setFcFields(prev => ({ ...prev, [field]: e.target.value }))}
+                  placeholder={`${field}...`}
                   rows={2}
-                  className="flex-1 bg-bgCard border border-borderColor focus:border-primary rounded-lg p-2 text-xs text-textMain outline-none resize-none transition-colors"
+                  className="w-full bg-bgCard border border-borderColor focus:border-primary rounded-lg p-2 text-xs text-textMain outline-none resize-y min-h-[40px] max-h-40 custom-scrollbar transition-colors"
                   onKeyDown={(e) => {
                     if (e.key === 'Enter' && e.ctrlKey) {
                       e.preventDefault();
@@ -1196,13 +1253,13 @@ Language: ${targetLang}`;
                     }
                   }}
                 />
-              </div>
+              ))}
             </div>
 
             <div className="flex items-center justify-between gap-2">
               <button
                 type="button"
-                disabled={fcAiLoading || (!fcFront && !fcBack)}
+                disabled={fcAiLoading || !Object.values(fcFields).some(v => v.trim())}
                 onClick={handleFcAiFormulate}
                 className="text-[11px] text-primaryGlow hover:text-white flex items-center gap-1 bg-primary/10 hover:bg-primary/20 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40 cursor-pointer border border-primary/20"
                 title="ИИ сформулирует вопрос и ответ из вашего текста"
@@ -1213,7 +1270,7 @@ Language: ${targetLang}`;
 
               <button
                 type="button"
-                disabled={!fcFront.trim() || !fcBack.trim()}
+                disabled={!Object.values(fcFields).some(v => v.trim())}
                 onClick={handleFcSave}
                 className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primaryGlow disabled:opacity-40 text-white text-xs font-semibold transition-all cursor-pointer shadow-md shadow-primary/20 flex items-center gap-1.5"
                 title="Сохранить карточку (Ctrl+Enter)"

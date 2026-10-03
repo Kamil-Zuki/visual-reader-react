@@ -212,243 +212,106 @@ function App() {
   };
 
   return (
-    <div className="flex flex-col h-[100dvh] overflow-hidden bg-bgMain">
-      {/* Header with Android/Mobile Status Bar Safe Area Padding */}
-      <header className="mobile-safe-top bg-bgSidebar border-b border-borderColor flex items-center justify-between px-3 sm:px-4 shrink-0 z-30 h-auto md:h-14 pb-2.5 md:pb-0">
-        <div className="flex items-center gap-2 sm:gap-3 overflow-hidden">
-          {/* Sidebar toggle button on desktop */}
-          <button
-            onClick={toggleSidebar}
-            className={`p-1.5 rounded-lg border transition-colors cursor-pointer hidden md:flex items-center justify-center shrink-0 ${isSidebarOpen
-                ? 'bg-primary/15 border-primary/40 text-primaryGlow'
-                : 'bg-white/5 border-white/10 text-textDim hover:text-white'
-              }`}
-            title={isSidebarOpen ? 'Скрыть оглавление (Ctrl+B)' : 'Показать оглавление (Ctrl+B)'}
-          >
-            <PanelLeft size={16} />
-          </button>
-
-          <div className="w-8 h-8 rounded-lg bg-gradient-to-br from-primary to-primaryGlow flex items-center justify-center text-white shrink-0 shadow-sm shadow-primary/20">
-            <BookOpen size={18} />
-          </div>
-          <h1 className="font-semibold text-base sm:text-lg shrink-0 tracking-tight">Visual Reader</h1>
-          {hasBook && currentBook && (
-            <span className="text-xs text-textMuted bg-white/5 px-2 py-1 rounded border border-white/10 ml-1 truncate max-w-[120px] sm:max-w-xs hidden xs:inline-block">
-              {currentBook.title}
-            </span>
-          )}
+    <div className="flex h-[100dvh] overflow-hidden bg-bgMain">
+      
+      {/* GLOBAL SIDEBAR (Navigation) */}
+      <nav className="w-16 md:w-[72px] bg-bgSidebar border-r border-borderColor flex flex-col items-center py-4 gap-4 z-40 shrink-0">
+        <div 
+          className="w-10 h-10 rounded-xl bg-gradient-to-br from-primary to-primaryGlow flex items-center justify-center text-white shadow-sm shadow-primary/20 mb-2 cursor-pointer"
+          onClick={() => setLibraryOpen(true)}
+          title="На главную"
+        >
+          <BookOpen size={20} />
         </div>
 
-        <div className="flex items-center gap-1.5 sm:gap-2.5">
-          {/* PWA install button if prompt available */}
-          {installPrompt && !isInstalled && (
+        {/* Main Actions */}
+        <div className="flex flex-col gap-2 w-full px-2">
+          <button onClick={() => setLibraryOpen(true)} className="p-3 rounded-xl text-textDim hover:text-white hover:bg-white/5 transition-colors flex justify-center w-full" title="Библиотека">
+            <Library size={20} />
+          </button>
+          <button onClick={() => hasBook && setSearchOpen(true)} disabled={!hasBook} className={`p-3 rounded-xl flex justify-center w-full transition-colors ${hasBook ? 'text-textDim hover:text-white hover:bg-white/5' : 'text-textDim/30'}`} title="Поиск (Ctrl+K)">
+            <Search size={20} />
+          </button>
+          <button onClick={() => hasBook && setNotesOpen(true)} disabled={!hasBook} className={`p-3 rounded-xl flex justify-center w-full transition-colors ${hasBook ? 'text-textDim hover:text-white hover:bg-white/5' : 'text-textDim/30'}`} title="Заметки">
+            <PenTool size={20} />
+          </button>
+          <button onClick={() => hasBook && setGraphOpen(true)} disabled={!hasBook} className={`p-3 rounded-xl flex justify-center w-full transition-colors ${hasBook ? 'text-textDim hover:text-white hover:bg-white/5' : 'text-textDim/30'}`} title="Связи (Граф)">
+            <Network size={20} />
+          </button>
+          <button onClick={() => hasBook && setFlashcardsOpen(true)} disabled={!hasBook} className={`p-3 rounded-xl flex justify-center w-full transition-colors relative ${hasBook ? 'text-textDim hover:text-white hover:bg-white/5' : 'text-textDim/30'}`} title="Карточки">
+            <Layers size={20} />
+            {dueCardsCount > 0 && <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(99,102,241,0.8)]"></span>}
+          </button>
+          <button onClick={() => setGlossaryOpen(true)} className="p-3 rounded-xl text-textDim hover:text-white hover:bg-white/5 transition-colors flex justify-center w-full" title="Глоссарий">
+            <BookMarked size={20} />
+          </button>
+        </div>
+
+        {/* Bottom Actions */}
+        <div className="mt-auto flex flex-col gap-2 w-full px-2">
+          <button onClick={() => setStatsOpen(true)} className="p-3 rounded-xl text-textDim hover:text-white hover:bg-white/5 transition-colors flex justify-center w-full" title="Прогресс чтения">
+            <BarChart2 size={20} />
+          </button>
+          <button onClick={() => setSyncModalOpen(true)} className={`p-3 rounded-xl flex justify-center w-full transition-colors ${syncStatus === 'synced' ? 'text-accentEmerald bg-accentEmerald/10' : syncStatus === 'error' ? 'text-red-400 bg-red-400/10' : 'text-textDim hover:text-white hover:bg-white/5'}`} title="Синхронизация (Supabase)">
+            <Cloud size={20} />
+          </button>
+          <button onClick={() => setSettingsOpen(true)} className="p-3 rounded-xl text-textDim hover:text-white hover:bg-white/5 transition-colors flex justify-center w-full relative" title="Настройки">
+            <Settings size={20} />
+            <div className={`absolute top-2.5 right-2.5 w-1.5 h-1.5 rounded-full ${apiKey ? 'bg-accentEmerald' : 'bg-red-500'}`}></div>
+          </button>
+        </div>
+      </nav>
+
+      {/* MAIN APP CONTENT */}
+      <div className="flex flex-col flex-1 min-w-0 overflow-hidden">
+        
+        {/* CLEAN HEADER */}
+        <header className="mobile-safe-top bg-bgMain border-b border-borderColor flex items-center justify-between px-4 shrink-0 z-30 h-12">
+          <div className="flex items-center gap-3">
             <button
-              onClick={handleInstallClick}
-              className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 text-xs rounded-md bg-primary hover:bg-primaryGlow text-white font-medium shadow-md shadow-primary/20 transition-all cursor-pointer"
-              title="Установить как PWA приложение"
+              onClick={toggleSidebar}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer hidden md:flex items-center justify-center shrink-0 ${isSidebarOpen ? 'bg-primary/15 text-primaryGlow' : 'bg-transparent text-textDim hover:text-white hover:bg-white/5'}`}
+              title={isSidebarOpen ? 'Скрыть оглавление (Ctrl+B)' : 'Показать оглавление (Ctrl+B)'}
             >
-              <Download size={14} />
-              <span className="hidden sm:inline">Установить</span>
+              <PanelLeft size={16} />
             </button>
-          )}
-
-          {/* Inspector toggle button on desktop */}
-          <button
-            onClick={toggleInspector}
-            className={`px-2 sm:px-2.5 py-1.5 text-xs rounded-md border transition-colors cursor-pointer hidden md:flex items-center gap-1.5 ${isInspectorOpen
-                ? 'bg-primary/15 border-primary/40 text-primaryGlow font-medium'
-                : 'bg-white/5 border-white/10 text-textDim hover:text-white'
-              }`}
-            title={isInspectorOpen ? 'Скрыть ИИ-инспектор (Ctrl+I)' : 'Показать ИИ-инспектор (Ctrl+I)'}
-          >
-            <PanelRight size={14} />
-            <span className="hidden lg:inline">Инспектор</span>
-          </button>
-
-          {/* Full-text Book Search Button */}
-          <button
-            onClick={() => hasBook && setSearchOpen(true)}
-            disabled={!hasBook}
-            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-colors group ${
-              hasBook
-                ? 'bg-white/5 hover:bg-white/10 border-white/10 hover:border-primary/40 cursor-pointer'
-                : 'bg-white/[0.02] border-white/5 text-textDim opacity-50 cursor-not-allowed'
-            }`}
-            title="Полнотекстовый поиск по книге (Ctrl+K или Ctrl+F)"
-          >
-            <Search size={14} className="text-primaryGlow group-hover:scale-110 transition-transform" />
-            <span className="hidden sm:inline">Поиск</span>
-            <span className="hidden xl:inline text-[10px] text-textDim font-mono bg-white/5 border border-white/10 px-1 py-0.5 rounded ml-0.5">
-              Ctrl+K
-            </span>
-          </button>
-
-          {hasBook ? (
-            <>
-              <button
-                onClick={() => setLibraryOpen(true)}
-                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
-                title="Сменить книгу"
-              >
-                <Library size={14} />
-                <span className="hidden sm:inline">Библиотека</span>
-              </button>
-              <button
-                onClick={() => {
-                  clearEpubResume();
-                  setCurrentBook(null, '');
-                }}
-                className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
-                title="Закрыть книгу и вернуться на главный экран"
-              >
-                <BookOpen size={14} />
-                <span className="hidden sm:inline">В библиотеку</span>
-              </button>
-            </>
-          ) : (
-            <button
-              onClick={handleResumeReading}
-              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-primary hover:bg-primaryGlow text-white font-medium shadow-md shadow-primary/20 transition-all cursor-pointer"
-              title="Вернуться к чтению книги"
-            >
-              <BookOpen size={14} />
-              <span>К чтению</span>
-            </button>
-          )}
-
-          <button
-            onClick={() => hasBook && setNotesOpen(true)}
-            disabled={!hasBook}
-            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-colors ${
-              hasBook
-                ? 'bg-white/5 hover:bg-white/10 border-white/10 cursor-pointer'
-                : 'opacity-50 cursor-not-allowed border-white/5'
-            }`}
-            title="Ваши заметки и хайлайты"
-          >
-            <PenTool size={14} />
-            <span className="hidden sm:inline">Заметки</span>
-          </button>
-
-          <button
-            onClick={() => hasBook && setGraphOpen(true)}
-            disabled={!hasBook}
-            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-colors ${
-              hasBook
-                ? 'bg-white/5 hover:bg-white/10 border-white/10 cursor-pointer'
-                : 'opacity-50 cursor-not-allowed border-white/5'
-            }`}
-            title="Карта знаний: оглавление и прогресс"
-          >
-            <Network size={14} />
-            <span className="hidden sm:inline">Связи</span>
-          </button>
-
-          {/* Flashcards & Spaced Repetition Button */}
-          <button
-            onClick={() => hasBook && setFlashcardsOpen(true)}
-            disabled={!hasBook}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer relative"
-            title="Флешкарты и интервальное повторение"
-          >
-            <Layers size={14} className="text-primaryGlow" />
-            <span className="hidden sm:inline">Карточки</span>
-            {dueCardsCount > 0 && (
-              <span className="px-1.5 py-0.2 rounded-full bg-primary text-white text-[10px] font-mono font-semibold shadow-sm">
-                {dueCardsCount}
-              </span>
+            
+            {hasBook && currentBook ? (
+              <div className="flex items-center gap-3">
+                <span className="font-semibold text-sm sm:text-base tracking-tight truncate max-w-[200px] sm:max-w-md text-white">
+                  {currentBook.title}
+                </span>
+                <button
+                  onClick={() => { clearEpubResume(); setCurrentBook(null, ''); }}
+                  className="px-2 py-1 bg-white/5 hover:bg-white/10 rounded-md border border-white/10 text-[10px] sm:text-xs text-textDim transition-colors uppercase font-bold tracking-wider"
+                >
+                  Закрыть
+                </button>
+              </div>
+            ) : (
+              <h1 className="font-semibold text-base tracking-tight text-textDim">Visual Reader</h1>
             )}
-          </button>
+          </div>
 
-          {/* Glossary Button */}
-          <button
-            onClick={() => setGlossaryOpen(true)}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
-            title="Глоссарий терминов книги"
-          >
-            <BookMarked size={14} className="text-accentEmerald" />
-            <span className="hidden sm:inline">Глоссарий</span>
-          </button>
-
-          {/* Stats / Progress Dashboard Button */}
-          <button
-            onClick={() => setStatsOpen(true)}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
-            title="Статистика чтения и прогресс"
-          >
-            <BarChart2 size={14} className="text-violet-400" />
-            <span className="hidden sm:inline">Прогресс</span>
-          </button>
-
-          {/* Supabase Cloud Sync Status Button */}
-          <button
-            onClick={() => setSyncModalOpen(true)}
-            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-all cursor-pointer ${
-              !syncSettings?.enabled
-                ? 'bg-white/5 border-white/10 text-textDim hover:text-white'
-                : syncStatus === 'synced'
-                  ? 'border-accentEmerald/40 bg-accentEmerald/10 text-accentEmerald hover:bg-accentEmerald/20'
-                  : syncStatus === 'error'
-                    ? 'border-red-500/40 bg-red-500/10 text-red-300 hover:bg-red-500/20'
-                    : 'border-amber-500/40 bg-amber-500/10 text-amber-300 hover:bg-amber-500/20'
-            }`}
-            title={
-              !syncSettings?.enabled
-                ? 'Облачная синхронизация выключена (нажмите для настройки)'
-                : syncStatus === 'synced'
-                  ? 'Облако: синхронизировано'
-                  : syncStatus === 'syncing'
-                    ? 'Облако: отправка изменений...'
-                    : syncStatus === 'connecting'
-                      ? 'Облако: подключение...'
-                      : 'Облако: ошибка синхронизации'
-            }
-          >
-            {/* Status indicator dot */}
-            <div className={`w-2 h-2 rounded-full shrink-0 ${
-              !syncSettings?.enabled
-                ? 'bg-white/20'
-                : syncStatus === 'synced'
-                  ? 'bg-accentEmerald shadow-[0_0_8px_rgba(16,185,129,0.8)]'
-                  : syncStatus === 'error'
-                    ? 'bg-red-400 shadow-[0_0_8px_rgba(248,113,113,0.8)]'
-                    : 'bg-amber-400 shadow-[0_0_8px_rgba(251,191,36,0.8)] animate-ping'
-            }`}></div>
-
-            <Cloud size={14} className={syncStatus === 'synced' ? 'text-accentEmerald' : syncStatus === 'syncing' ? 'text-blue-400 animate-spin' : ''} />
-
-            <span className="hidden sm:inline">
-              {!syncSettings?.enabled
-                ? 'Облако (выкл)'
-                : syncStatus === 'synced'
-                  ? 'В сети'
-                  : syncStatus === 'syncing'
-                    ? 'Синхр...'
-                    : syncStatus === 'error'
-                      ? 'Ошибка'
-                      : 'Подключение...'}
-            </span>
-          </button>
-
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className={`flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md border transition-colors cursor-pointer ${apiKey ? 'border-accentEmerald/30 bg-accentEmerald/10 text-accentEmerald hover:bg-accentEmerald/20' : 'border-red-500/30 bg-red-500/10 text-red-400 hover:bg-red-500/20'}`}
-            title={apiKey ? 'OpenRouter API Key настроен' : 'Ключ API отсутствует'}
-          >
-            <div className={`w-2 h-2 rounded-full shrink-0 ${apiKey ? 'bg-accentEmerald' : 'bg-red-500'}`}></div>
-            <span className="hidden md:inline">{apiKey ? 'API Active' : 'No API Key'}</span>
-          </button>
-
-          <button
-            onClick={() => setSettingsOpen(true)}
-            className="flex items-center gap-1.5 px-2 sm:px-3 py-1.5 text-xs sm:text-sm rounded-md bg-white/5 hover:bg-white/10 border border-white/10 transition-colors cursor-pointer"
-            title="Настройки"
-          >
-            <Settings size={14} />
-            <span className="hidden sm:inline">Настройки</span>
-          </button>
-        </div>
-      </header>
+          <div className="flex items-center gap-3">
+            {installPrompt && !isInstalled && (
+              <button
+                onClick={handleInstallClick}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md bg-primary/20 text-primaryGlow hover:bg-primary hover:text-white transition-colors border border-primary/30"
+              >
+                <Download size={14} /> <span className="hidden sm:inline">Установить</span>
+              </button>
+            )}
+            
+            <button
+              onClick={toggleInspector}
+              className={`p-1.5 rounded-lg transition-colors cursor-pointer hidden md:flex items-center justify-center shrink-0 ${isInspectorOpen ? 'bg-primary/15 text-primaryGlow' : 'bg-transparent text-textDim hover:text-white hover:bg-white/5'}`}
+              title={isInspectorOpen ? 'Скрыть ИИ-инспектор (Ctrl+I)' : 'Показать ИИ-инспектор (Ctrl+I)'}
+            >
+              <PanelRight size={16} />
+            </button>
+          </div>
+        </header>
 
       {/* Main Layout: Desktop (3 columns with resizers) vs Mobile (active tab) */}
       <div className="flex flex-1 overflow-hidden relative">
@@ -573,6 +436,7 @@ function App() {
       <NotesModal />
       <ConceptGraphModal />
       <SyncModal />
+      </div>
     </div>
   );
 }

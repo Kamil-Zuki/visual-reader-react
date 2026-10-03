@@ -197,7 +197,7 @@ Language: ${targetLang}`;
           (result.skipped ? `, пропущено (дубликаты): ${result.skipped}` : '')
       );
     } catch (err) {
-      alert(`AnkiConnect: ${err.message}\n\nПроверьте Anki и вкладку «Anki» в настройках.`);
+      alert(`AnkiConnect: ${err.message || err}\n\nПроверьте Anki и вкладку «Anki» в настройках.`);
     } finally {
       setAnkiSending(false);
     }

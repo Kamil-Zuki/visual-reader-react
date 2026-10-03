@@ -120,7 +120,10 @@ export default function SettingsModal() {
     try {
       const fields = await fetchAnkiModelFields(localAnkiSettings, modelName);
       setAnkiModelFields(fields);
-      setLocalAnkiSettings((prev) => applyFieldMapToSettings(fields, prev, true));
+      setLocalAnkiSettings((prev) => {
+        const next = applyFieldMapToSettings(fields, prev, true);
+        return { ...next, modelFields: fields };
+      });
     } catch {
       setAnkiModelFields([]);
     } finally {

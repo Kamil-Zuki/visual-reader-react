@@ -39,7 +39,7 @@ export default function CardModal({ isOpen, onClose, card }) {
           : 'Anki не добавил заметку (возможно, дубликат).'
       );
     } catch (err) {
-      alert(`AnkiConnect: ${err.message}`);
+      alert(`AnkiConnect: ${err.message || err}`);
     } finally {
       setAnkiSending(false);
     }

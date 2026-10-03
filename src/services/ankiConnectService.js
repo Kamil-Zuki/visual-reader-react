@@ -10,6 +10,7 @@ export const DEFAULT_ANKI_SETTINGS = {
   tags: ['visual-reader'],
   fieldFront: '',
   fieldBack: '',
+  modelFields: ['Front', 'Back'],
 };
 
 function normalizeBaseUrl(url) {
@@ -138,15 +139,26 @@ function buildTags(settings, bookTitle) {
 
 function buildNotesFromPairs(pairs, settings, fieldMap, bookTitle) {
   const tags = buildTags(settings, bookTitle);
-  return pairs.map(({ front, back }) => ({
-    deckName: settings.deckName,
-    modelName: settings.modelName,
-    fields: {
-      [fieldMap.front]: toAnkiHtml(front),
-      [fieldMap.back]: toAnkiHtml(back),
-    },
-    tags,
-  }));
+  return pairs.map((c) => {
+    let fields = {};
+    if (c.ankiFields && Object.keys(c.ankiFields).length > 0) {
+      // Dynamic fields mapping (new behavior)
+      Object.entries(c.ankiFields).forEach(([key, val]) => {
+        fields[key] = toAnkiHtml(val);
+      });
+    } else {
+      // Legacy mapping behavior
+      fields[fieldMap.front] = toAnkiHtml(c.front);
+      fields[fieldMap.back] = toAnkiHtml(c.back);
+    }
+
+    return {
+      deckName: settings.deckName,
+      modelName: settings.modelName,
+      fields,
+      tags,
+    };
+  });
 }
 
 async function addNotesInBatches(baseUrl, notes) {
@@ -175,6 +187,7 @@ export async function pushFlashcardsToAnki(flashcards, bookTitle, settings) {
   const pairs = flashcards.map((c) => ({
     front: c.front || '',
     back: c.back || '',
+    ankiFields: c.ankiFields || null,
   }));
   const notes = buildNotesFromPairs(pairs, settings, fieldMap, bookTitle);
   return addNotesInBatches(baseUrl, notes);

@@ -1,0 +1,230 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Knowledge Graph Mockup</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #0f111a;
+            color: #e2e8f0;
+            font-family: 'Inter', sans-serif;
+            overflow: hidden;
+        }
+        
+        /* Glassmorphism utilities */
+        .glass {
+            background: rgba(30, 41, 59, 0.4);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.08);
+        }
+
+        /* Graph nodes */
+        .node {
+            position: absolute;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 12px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+            white-space: nowrap;
+        }
+        .node:hover {
+            transform: scale(1.1);
+        }
+        .node-label {
+            position: absolute;
+            top: 100%;
+            margin-top: 8px;
+            color: #94a3b8;
+            pointer-events: none;
+        }
+
+        /* Mastery Colors */
+        .mastery-green { background: #22c55e; box-shadow: 0 0 20px rgba(34, 197, 94, 0.4); border: 2px solid #4ade80; }
+        .mastery-yellow { background: #eab308; box-shadow: 0 0 20px rgba(234, 179, 8, 0.4); border: 2px solid #fde047; }
+        .mastery-red { background: #ef4444; box-shadow: 0 0 20px rgba(239, 68, 68, 0.4); border: 2px solid #f87171; }
+        
+        /* Specific sizes */
+        .node-lg { width: 48px; height: 48px; }
+        .node-md { width: 32px; height: 32px; }
+        .node-sm { width: 20px; height: 20px; }
+
+        /* Background grid/glow */
+        .bg-glow {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 800px;
+            height: 800px;
+            background: radial-gradient(circle, rgba(99,102,241,0.1) 0%, rgba(15,17,26,0) 70%);
+            transform: translate(-50%, -50%);
+            pointer-events: none;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 10px; }
+    </style>
+</head>
+<body class="h-screen flex">
+
+    <!-- Left Sidebar -->
+    <aside class="w-64 border-r border-slate-800 bg-slate-900/50 flex flex-col z-10 relative">
+        <div class="p-6 font-bold text-xl flex items-center gap-2 text-indigo-400">
+            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 10V3L4 14h7v7l9-11h-7z"></path></svg>
+            MindMeld
+        </div>
+        <nav class="flex-1 px-4 space-y-2">
+            <a href="#" class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 6.253v13m0-13C10.832 5.477 9.246 5 7.5 5S4.168 5.477 3 6.253v13C4.168 18.477 5.754 18 7.5 18s3.332.477 4.5 1.253m0-13C13.168 5.477 14.754 5 16.5 5c1.747 0 3.332.477 4.5 1.253v13C19.832 18.477 18.247 18 16.5 18c-1.746 0-3.332.477-4.5 1.253"></path></svg>
+                Library
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 text-indigo-300 bg-indigo-500/10 border border-indigo-500/20 rounded-lg">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"></path></svg>
+                Active Book
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M7 12l3-3 3 3 4-4M8 21l4-4 4 4M3 4h18M4 4h16v12a1 1 0 01-1 1H5a1 1 0 01-1-1V4z"></path></svg>
+                Graphs
+            </a>
+            <a href="#" class="flex items-center gap-3 px-3 py-2 text-slate-400 hover:text-white hover:bg-slate-800/50 rounded-lg transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 11H5m14 0a2 2 0 012 2v6a2 2 0 01-2 2H5a2 2 0 01-2-2v-6a2 2 0 012-2m14 0V9a2 2 0 00-2-2M5 11V9a2 2 0 012-2m0 0V5a2 2 0 012-2h6a2 2 0 012 2v2M7 7h10"></path></svg>
+                Review Queue
+                <span class="ml-auto bg-red-500/20 text-red-400 text-xs px-2 py-0.5 rounded-full border border-red-500/30">3</span>
+            </a>
+        </nav>
+        <div class="p-4 mt-auto">
+            <button class="w-full flex items-center gap-3 px-3 py-2 text-slate-500 hover:text-white transition-colors">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"></path><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"></path></svg>
+                Settings
+            </button>
+        </div>
+    </aside>
+
+    <!-- Main Graph Area -->
+    <main class="flex-1 relative">
+        <div class="bg-glow"></div>
+        
+        <!-- Top filters -->
+        <div class="absolute top-4 left-4 z-10 flex gap-2">
+            <div class="glass px-3 py-1.5 rounded-full flex items-center gap-2 text-sm">
+                <div class="w-2 h-2 rounded-full bg-green-500"></div> B-Trees
+            </div>
+            <div class="glass px-3 py-1.5 rounded-full flex items-center gap-2 text-sm">
+                <div class="w-2 h-2 rounded-full bg-green-500"></div> ACID
+            </div>
+            <div class="glass px-3 py-1.5 rounded-full flex items-center gap-2 text-sm opacity-60">
+                <div class="w-2 h-2 rounded-full bg-yellow-500"></div> Indexes
+            </div>
+            <div class="glass px-3 py-1.5 rounded-full flex items-center gap-2 text-sm opacity-60">
+                <div class="w-2 h-2 rounded-full bg-red-500"></div> Normalization
+            </div>
+        </div>
+
+        <!-- SVG Lines (Fake connections) -->
+        <svg class="absolute inset-0 w-full h-full pointer-events-none z-0">
+            <path d="M400 300 Q 500 250 600 300" stroke="rgba(99,102,241,0.3)" stroke-width="2" fill="none"/>
+            <path d="M400 300 Q 300 400 250 500" stroke="rgba(239,68,68,0.3)" stroke-width="2" fill="none"/>
+            <path d="M400 300 L 450 450" stroke="rgba(234,179,8,0.3)" stroke-width="2" fill="none"/>
+            <path d="M600 300 L 450 450" stroke="rgba(234,179,8,0.3)" stroke-width="2" fill="none"/>
+        </svg>
+
+        <!-- Nodes -->
+        <div class="absolute inset-0 z-10">
+            <!-- Central B-Trees (Selected) -->
+            <div class="node node-lg mastery-green ring-4 ring-white/20" style="top: 276px; left: 376px;">
+                <span class="node-label font-bold text-white text-sm">B-Trees</span>
+            </div>
+            
+            <!-- ACID -->
+            <div class="node node-md mastery-green" style="top: 284px; left: 584px;">
+                <span class="node-label">ACID</span>
+            </div>
+
+            <!-- Memory Management -->
+            <div class="node node-lg mastery-red" style="top: 476px; left: 226px;">
+                <span class="node-label">Memory Mgt</span>
+            </div>
+
+            <!-- Query Optimization -->
+            <div class="node node-md mastery-yellow" style="top: 434px; left: 434px;">
+                <span class="node-label">Query Opt.</span>
+            </div>
+            
+            <!-- Satellite sm nodes -->
+            <div class="node node-sm mastery-yellow" style="top: 180px; left: 350px;"></div>
+            <div class="node node-sm mastery-green" style="top: 220px; left: 650px;"></div>
+            <div class="node node-sm mastery-red" style="top: 550px; left: 300px;"></div>
+        </div>
+
+    </main>
+
+    <!-- Right Side Panel (Interactive Encyclopedia) -->
+    <aside class="w-96 glass border-l border-slate-700/50 shadow-2xl flex flex-col z-20 m-4 rounded-2xl relative overflow-hidden">
+        
+        <!-- Header -->
+        <div class="p-6 border-b border-slate-700/50">
+            <div class="flex justify-between items-start mb-2">
+                <h2 class="text-2xl font-bold text-white tracking-tight">B-Trees</h2>
+                <span class="px-2.5 py-1 rounded-full border border-green-500/30 text-green-400 text-xs font-semibold bg-green-500/10 shadow-[0_0_10px_rgba(34,197,94,0.2)]">
+                    Mastered
+                </span>
+            </div>
+            <p class="text-xs text-slate-400">Designing Data-Intensive Applications</p>
+        </div>
+
+        <!-- Scrollable Content -->
+        <div class="p-6 overflow-y-auto flex-1 space-y-8">
+            
+            <!-- AI Summary -->
+            <div>
+                <h3 class="text-sm font-semibold text-indigo-300 mb-3 uppercase tracking-wider">Summary (AI-Generated)</h3>
+                <p class="text-sm text-slate-300 leading-relaxed">
+                    A balanced tree structure maintaining sorted data, allowing efficient logarithmic search, sequential access, insertion, and deletions. Used extensively in databases and file systems to manage indexing.
+                </p>
+                <p class="text-sm text-slate-300 leading-relaxed mt-2">
+                    Unlike LSM-Trees which are optimized for writes, B-Trees update data in-place and are the standard index implementation in almost all relational databases.
+                </p>
+            </div>
+
+            <!-- Related Highlights -->
+            <div>
+                <div class="flex justify-between items-center mb-3">
+                    <h3 class="text-sm font-semibold text-indigo-300 uppercase tracking-wider">Related Highlights</h3>
+                    <button class="text-slate-400 hover:text-white"><svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"></path></svg></button>
+                </div>
+                
+                <div class="space-y-3">
+                    <div class="p-3 rounded-xl bg-slate-800/40 border border-slate-700/50 border-l-2 border-l-indigo-400">
+                        <p class="text-sm text-slate-300 italic mb-2">"B-Trees minimize disk I/O operations by keeping the tree shallow, usually 3-4 levels deep even for millions of records."</p>
+                        <p class="text-xs text-slate-500">— Designing Data-Intensive Applications (p. 81)</p>
+                    </div>
+                    
+                    <div class="p-3 rounded-xl bg-slate-800/40 border border-slate-700/50 border-l-2 border-l-indigo-400">
+                        <p class="text-sm text-slate-300 italic mb-2">"Maintaining tree balance requires complex split and merge operations during writes, which can cause fragmentation."</p>
+                        <p class="text-xs text-slate-500">— Database Systems (p. 154)</p>
+                    </div>
+                </div>
+            </div>
+
+        </div>
+
+        <!-- Footer Action -->
+        <div class="p-6 border-t border-slate-700/50 bg-slate-900/40 backdrop-blur-md">
+            <button class="w-full py-3 px-4 bg-gradient-to-r from-lime-400 to-green-400 hover:from-lime-300 hover:to-green-300 text-slate-900 font-bold rounded-xl shadow-[0_0_20px_rgba(74,222,128,0.4)] transition-all transform hover:-translate-y-0.5 flex items-center justify-center gap-2">
+                <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 16H6a2 2 0 01-2-2V6a2 2 0 012-2h8a2 2 0 012 2v2m-6 12h8a2 2 0 002-2v-8a2 2 0 00-2-2h-8a2 2 0 00-2 2v8a2 2 0 002 2z"></path></svg>
+                PRACTICE FLASHCARDS
+            </button>
+        </div>
+
+    </aside>
+
+</body>
+</html>
