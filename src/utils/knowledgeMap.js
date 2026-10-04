@@ -1,14 +1,8 @@
-/** Построение Mermaid-графа оглавления и клики по узлам */
+/** Knowledge Map — force-graph data builder */
 
-const MAX_SECTIONS_FULL = 56;
-
-function escapeMermaidLabel(text) {
-  return String(text || '')
-    .replace(/[\r\n]+/g, ' ')
-    .replace(/"/g, "'")
-    .replace(/[[\]{}#]/g, '')
-    .trim()
-    .slice(0, 72);
+function truncate(text, max = 40) {
+  const s = String(text || '').replace(/[\r\n]+/g, ' ').trim();
+  return s.length > max ? s.slice(0, max - 1) + '…' : s;
 }
 
 export function isDdiaConceptBook(book) {
@@ -17,93 +11,17 @@ export function isDdiaConceptBook(book) {
 }
 
 /**
- * @returns {{ diagram: string, nodeMeta: Record<string, { cIdx: number, sIdx: number }>, compact: boolean }}
- */
-export function buildTocMermaidGraph(book, options = {}) {
-  const {
-    readIdSet = new Set(),
-    activeChapterIdx = 0,
-    activeSectionIdx = 0,
-  } = options;
-
-  const chapters = book?.chapters || book?.structure || [];
-  const lines = ['graph TD'];
-  const nodeMeta = {};
-  const classLines = [];
-
-  const totalSections = chapters.reduce((n, ch) => n + (ch.sections?.length || 0), 0);
-  const compact = totalSections > MAX_SECTIONS_FULL;
-
-  lines.push(`  root["${escapeMermaidLabel(book?.title || 'Книга')}"]`);
-  classLines.push('class root rootNode');
-
-  chapters.forEach((ch, cIdx) => {
-    const cKey = `c${cIdx}`;
-    const chTitle = escapeMermaidLabel(ch.title || `Глава ${cIdx + 1}`);
-    lines.push(`  ${cKey}["${chTitle}"]`);
-    lines.push(`  root --> ${cKey}`);
-    nodeMeta[cKey] = { cIdx, sIdx: 0 };
-
-    const chapterActive =
-      cIdx === activeChapterIdx && (!ch.sections?.length || activeSectionIdx === 0);
-    if (chapterActive) classLines.push(`class ${cKey} activeNode`);
-
-    if (compact) return;
-
-    (ch.sections || []).forEach((sec, sIdx) => {
-      const sKey = `c${cIdx}s${sIdx}`;
-      const secTitle = escapeMermaidLabel(sec.title || `§ ${sIdx + 1}`);
-      lines.push(`  ${sKey}["${secTitle}"]`);
-      lines.push(`  ${cKey} --> ${sKey}`);
-      nodeMeta[sKey] = { cIdx, sIdx };
-
-      const isActive = cIdx === activeChapterIdx && sIdx === activeSectionIdx;
-      const isRead = sec.id && readIdSet.has(sec.id);
-      if (isActive) classLines.push(`class ${sKey} activeNode`);
-      else if (isRead) classLines.push(`class ${sKey} readNode`);
-    });
-  });
-
-  lines.push('  classDef rootNode fill:#6366f1,stroke:#818cf8,stroke-width:2px,color:#fff');
-  lines.push('  classDef readNode fill:#064e3b,stroke:#34d399,color:#ecfdf5');
-  lines.push('  classDef activeNode fill:#4338ca,stroke:#c4b5fd,stroke-width:3px,color:#fff');
-  lines.push('  classDef defaultNode fill:#1e1e2d,stroke:#64748b,color:#e2e8f0');
-  lines.push(...classLines);
-
-  return { diagram: lines.join('\n'), nodeMeta, compact };
-}
-
-export function parseMermaidNodeKey(svgNodeId) {
-  if (!svgNodeId) return null;
-  const m = svgNodeId.match(/flowchart-(c\d+(?:s\d+)?)-/i) || svgNodeId.match(/-(c\d+(?:s\d+)?)-/i);
-  return m ? m[1] : null;
-}
-
-/** Вешает переход по разделу на узлы SVG */
-export function attachKnowledgeMapClicks(container, nodeMeta, onNavigate) {
-  if (!container || !nodeMeta) return () => {};
-
-  const onClick = (e) => {
-    const node = e.target.closest?.('g.node');
-    if (!node?.id) return;
-    const key = parseMermaidNodeKey(node.id);
-    const target = key ? nodeMeta[key] : null;
-    if (!target) return;
-    e.preventDefault();
-    e.stopPropagation();
-    onNavigate(target.cIdx, target.sIdx);
-  };
-
-  container.addEventListener('click', onClick);
-  container.querySelectorAll('g.node').forEach((g) => {
-    g.style.cursor = 'pointer';
-  });
-
-  return () => container.removeEventListener('click', onClick);
-}
-
-/**
- * @returns {{ nodes: any[], links: any[], nodeMeta: Record<string, { cIdx: number, sIdx: number }> }}
+ * Builds force-graph data from a book's TOC + zettel annotations.
+ *
+ * Node types:
+ *   root      – single book root
+ *   chapter   – top-level chapter
+ *   section   – sub-section inside a chapter
+ *   flashcard – user flashcard anchored to a section
+ *   highlight – user highlight anchored to a section
+ *   glossary  – glossary term anchored to a section
+ *
+ * @returns {{ nodes: object[], links: object[], nodeMeta: object }}
  */
 export function buildTocForceGraph(book, options = {}) {
   const {
@@ -112,8 +30,10 @@ export function buildTocForceGraph(book, options = {}) {
     activeSectionIdx = 0,
     bookFlashcards = [],
     bookGlossary = [],
-    bookBookmarks = [],
     bookHighlights = [],
+    showFlashcards = true,
+    showGlossary = true,
+    showHighlights = true,
   } = options;
 
   const chapters = book?.chapters || book?.structure || [];
@@ -121,91 +41,115 @@ export function buildTocForceGraph(book, options = {}) {
   const links = [];
   const nodeMeta = {};
 
-  const totalSections = chapters.reduce((n, ch) => n + (ch.sections?.length || 0), 0);
-  const compact = totalSections > MAX_SECTIONS_FULL;
-
-  // Root node
+  // ── Root ──────────────────────────────────────────────────────────────────
   nodes.push({
     id: 'root',
-    name: escapeMermaidLabel(book?.title || 'Книга'),
-    val: 20,
-    color: '#6366f1', // primary color
-    type: 'root'
+    name: truncate(book?.title || 'Книга', 50),
+    val: 24,
+    color: '#818cf8',
+    type: 'root',
+    group: 0,
   });
 
+  // ── Chapters & Sections ───────────────────────────────────────────────────
   chapters.forEach((ch, cIdx) => {
     const cKey = `c${cIdx}`;
-    const chapterActive =
-      cIdx === activeChapterIdx && (!ch.sections?.length || activeSectionIdx === 0);
+    const isChActive = cIdx === activeChapterIdx;
+
+    // Count read sections in this chapter
+    const secIds = (ch.sections || []).map(s => s.id).filter(Boolean);
+    const readCount = secIds.filter(id => readIdSet.has(id)).length;
+    const totalCount = secIds.length;
+    const chProgress = totalCount > 0 ? readCount / totalCount : 0;
+
+    // Color by progress + active state
+    let chColor;
+    if (isChActive) chColor = '#a78bfa';
+    else if (chProgress === 1) chColor = '#34d399';
+    else if (chProgress > 0) chColor = `hsl(${142 + (1 - chProgress) * 60}, 60%, 45%)`;
+    else chColor = '#475569';
 
     nodes.push({
       id: cKey,
-      name: escapeMermaidLabel(ch.title || `Глава ${cIdx + 1}`),
-      val: 12,
-      color: chapterActive ? '#4338ca' : '#1e1e2d',
-      type: 'chapter'
+      name: truncate(ch.title || `Глава ${cIdx + 1}`, 45),
+      val: 14,
+      color: chColor,
+      type: 'chapter',
+      group: 1,
+      progress: chProgress,
+      readCount,
+      totalCount,
     });
-    links.push({ source: 'root', target: cKey });
+    links.push({ source: 'root', target: cKey, type: 'toc' });
     nodeMeta[cKey] = { cIdx, sIdx: 0, type: 'chapter' };
-
-    if (compact) return;
 
     (ch.sections || []).forEach((sec, sIdx) => {
       const sKey = `c${cIdx}s${sIdx}`;
       const isActive = cIdx === activeChapterIdx && sIdx === activeSectionIdx;
       const isRead = sec.id && readIdSet.has(sec.id);
 
-      let color = '#1e1e2d';
-      if (isActive) color = '#4338ca'; // active
-      else if (isRead) color = '#064e3b'; // read green
+      let secColor;
+      if (isActive) secColor = '#c4b5fd';
+      else if (isRead) secColor = '#6ee7b7';
+      else secColor = '#334155';
 
       nodes.push({
         id: sKey,
-        name: escapeMermaidLabel(sec.title || `§ ${sIdx + 1}`),
-        val: 7,
-        color,
-        type: 'section'
+        name: truncate(sec.title || `§ ${sIdx + 1}`, 40),
+        val: isActive ? 9 : 7,
+        color: secColor,
+        type: 'section',
+        group: 2,
+        isActive,
+        isRead,
       });
-      links.push({ source: cKey, target: sKey });
+      links.push({ source: cKey, target: sKey, type: 'toc' });
       nodeMeta[sKey] = { cIdx, sIdx, type: 'section' };
     });
   });
 
-  // Helper to add Zettelkasten nodes
-  const addZettelNodes = (items, type, baseColor, getLabel) => {
+  // ── Zettelkasten helpers ──────────────────────────────────────────────────
+  const addZettelNodes = (items, type, color, getLabel) => {
+    if (!Array.isArray(items)) return;
     items.forEach((item, i) => {
-      // Find parent section or chapter
+      if (!item) return;
       const cIdx = item.chapterIdx ?? 0;
       const sIdx = item.sectionIdx ?? 0;
       let parentKey = `c${cIdx}s${sIdx}`;
-      
-      // Fallback to chapter if section doesn't exist in our graph (e.g., compact mode or malformed data)
-      if (!nodeMeta[parentKey]) {
-        parentKey = `c${cIdx}`;
-        if (!nodeMeta[parentKey]) {
-           parentKey = 'root'; // ultimate fallback
-        }
-      }
+      if (!nodeMeta[parentKey]) parentKey = `c${cIdx}`;
+      if (!nodeMeta[parentKey]) parentKey = 'root';
 
       const nodeId = `${type}_${item.id || i}`;
       nodes.push({
         id: nodeId,
-        name: escapeMermaidLabel(getLabel(item)),
-        val: 4,
-        color: baseColor,
-        type
+        name: truncate(getLabel(item), 35),
+        val: 5,
+        color,
+        type,
+        group: { flashcard: 3, glossary: 4, highlight: 5 }[type] ?? 6,
       });
-      links.push({ source: parentKey, target: nodeId });
-      // Keep track of where it belongs if clicked
+      links.push({ source: parentKey, target: nodeId, type: 'zettel' });
       nodeMeta[nodeId] = { cIdx, sIdx, type };
     });
   };
 
-  if (!compact) {
-    addZettelNodes(bookFlashcards, 'flashcard', '#eab308', (c) => c?.front || c?.question || 'Карточка');
-    addZettelNodes(bookGlossary, 'glossary', '#10b981', (g) => g?.term || 'Термин');
-    addZettelNodes(bookHighlights, 'highlight', '#f43f5e', (h) => String(h?.text || h?.selectedText || 'Заметка').substring(0, 20) + '...');
+  if (showFlashcards) {
+    addZettelNodes(bookFlashcards, 'flashcard', '#fbbf24',
+      c => c?.front || c?.question || 'Карточка');
+  }
+  if (showGlossary) {
+    addZettelNodes(bookGlossary, 'glossary', '#2dd4bf',
+      g => g?.term || 'Термин');
+  }
+  if (showHighlights) {
+    addZettelNodes(bookHighlights, 'highlight', '#f472b6',
+      h => h?.text || h?.selectedText || 'Заметка');
   }
 
   return { nodes, links, nodeMeta };
 }
+
+/** Legacy Mermaid helpers (kept for any remaining references) */
+export function parseMermaidNodeKey() { return null; }
+export function attachKnowledgeMapClicks() { return () => {}; }
+export function buildTocMermaidGraph() { return { diagram: '', nodeMeta: {}, compact: false }; }
