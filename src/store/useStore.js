@@ -503,6 +503,20 @@ export const useStore = create((set) => ({
     return { glossary: updated };
   }),
 
+  // --- Concept Graph / LightRAG (Per Book) ---
+  conceptGraphs: {}, // { [bookId]: { nodes: [], links: [] } }
+  saveBookConceptGraph: (bookId, graph) => set((state) => {
+    const updated = { ...state.conceptGraphs, [bookId]: graph };
+    setStoreValue('ddia_concept_graphs', updated);
+    return { conceptGraphs: updated };
+  }),
+  resetBookConceptGraph: (bookId) => set((state) => {
+    const updated = { ...state.conceptGraphs };
+    delete updated[bookId];
+    setStoreValue('ddia_concept_graphs', updated);
+    return { conceptGraphs: updated };
+  }),
+
   // --- Supabase Cloud Sync State ---
   isSyncModalOpen: false,
   setSyncModalOpen: (isOpen) => set({ isSyncModalOpen: isOpen }),
@@ -577,7 +591,8 @@ export async function initStoreFromDB() {
     readingLog,
     epubLocations,
     epubReaderTheme,
-    ankiSettings
+    ankiSettings,
+    conceptGraphs
   ] = await Promise.all([
     getStoreValue('openrouter_api_key', ''),
     getStoreValue('openrouter_model', 'openrouter/free'),
@@ -606,7 +621,8 @@ export async function initStoreFromDB() {
     getStoreValue('ddia_reading_log', {}),
     getStoreValue('epub_locations', {}),
     getStoreValue('epub_reader_theme', 'dark'),
-    getStoreValue('anki_settings', null)
+    getStoreValue('anki_settings', null),
+    getStoreValue('ddia_concept_graphs', {})
   ]);
 
   const defaultSyncSettings = {
@@ -657,6 +673,7 @@ export async function initStoreFromDB() {
     ankiSettings: ankiSettings
       ? { ...DEFAULT_ANKI_SETTINGS, ...ankiSettings }
       : { ...DEFAULT_ANKI_SETTINGS },
+    conceptGraphs: conceptGraphs || {},
   });
 
   // Migrate old localStorage-only saved cards if the store is empty
