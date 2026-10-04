@@ -275,7 +275,7 @@ function App() {
           <button onClick={() => setSyncModalOpen(true)} className={`p-3 rounded-xl flex justify-center w-full transition-colors ${syncStatus === 'synced' ? 'text-accentEmerald bg-accentEmerald/10' : syncStatus === 'error' ? 'text-red-400 bg-red-400/10' : 'text-textDim hover:text-white hover:bg-white/5'}`} title="Синхронизация (Supabase)">
             <Cloud size={20} />
           </button>
-          <button onClick={() => setSettingsOpen(true)} className="p-3 rounded-xl text-textDim hover:text-white hover:bg-white/5 transition-colors flex justify-center w-full relative" title="Настройки (v0.4.0)">
+          <button onClick={() => setSettingsOpen(true)} className="p-3 rounded-xl text-textDim hover:text-white hover:bg-white/5 transition-colors flex justify-center w-full relative" title="Настройки (v0.4.1)">
             <Settings size={20} />
             <div className={`absolute top-2.5 right-2.5 w-1.5 h-1.5 rounded-full ${apiKey ? 'bg-accentEmerald' : 'bg-red-500'}`}></div>
           </button>

@@ -84,6 +84,7 @@ export default function AIInspector() {
   const [fcAnkiSending, setFcAnkiSending] = useState(false);
   const [fcSavedFlash, setFcSavedFlash] = useState(null);
   const [fcShowAll, setFcShowAll] = useState(false);
+  const [autoSendToAnki, setAutoSendToAnki] = useState(false);
   const fcFrontRef = useRef(null);
 
   useEffect(() => {
@@ -389,35 +390,79 @@ ${currentSectionText.slice(0, 12000)}
   const [selectedModalCard, setSelectedModalCard] = useState(null);
 
   // Flashcard inline helpers
-  const handleFcSave = () => {
-    const frontField = targetAnkiFields[0];
+  const handleFcSave = async () => {
+    const frontField = targetAnkiFields[0] || 'Front';
     const backField = targetAnkiFields[1] || targetAnkiFields[0];
     
-    if (!Object.values(fcFields).some(val => val.trim())) return;
+    if (!Object.values(fcFields).some(val => val && val.trim())) return;
 
-    addFlashcard(currentBookId, {
-      front: fcFields[frontField]?.trim() || '',
+    const newCard = {
+      id: `fc_${Date.now()}_${Math.random().toString(36).substr(2, 5)}`,
+      front: fcFields[frontField]?.trim() || Object.values(fcFields)[0]?.trim() || '',
       back: fcFields[backField]?.trim() || '',
       ankiFields: { ...fcFields },
       chapterIdx: activeChapterIdx,
       sectionIdx: activeSectionIdx,
       sectionTitle: currentSection?.title || '',
-    });
+      createdAt: Date.now(),
+    };
+
+    addFlashcard(currentBookId, newCard);
     
     setFcFields(prev => {
       const next = { ...prev };
       Object.keys(next).forEach(k => next[k] = '');
       return next;
     });
-    
-    setFcSavedFlash('Карточка сохранена!');
-    setTimeout(() => setFcSavedFlash(null), 2000);
+
+    if (autoSendToAnki) {
+      try {
+        const result = await pushFlashcardsToAnki([newCard], currentBook?.title, ankiSettings);
+        if (result.added > 0) {
+          setFcSavedFlash('Сохранено и отправлено в Anki! 🚀');
+        } else {
+          setFcSavedFlash('Сохранено (в Anki уже существует дубликат)');
+        }
+      } catch (err) {
+        console.warn('Auto-Anki error:', err);
+        setFcSavedFlash('Сохранено локально (AnkiConnect недоступен)');
+      }
+    } else {
+      setFcSavedFlash('Карточка сохранена!');
+    }
+    setTimeout(() => setFcSavedFlash(null), 3000);
     fcFrontRef.current?.focus();
   };
 
-  const handleFcAiFormulate = async () => {
-    const input = Object.values(fcFields).filter(v => v.trim()).join('\n').trim();
-    if (!input) return;
+  const handleEditCard = (card) => {
+    if (card.ankiFields && Object.keys(card.ankiFields).length > 0) {
+      setFcFields(card.ankiFields);
+    } else {
+      const frontField = targetAnkiFields[0] || 'Front';
+      const backField = targetAnkiFields[1] || targetAnkiFields[0];
+      setFcFields({
+        [frontField]: card.front || '',
+        [backField]: card.back || '',
+      });
+    }
+    deleteFlashcard(currentBookId, card.id);
+    fcFrontRef.current?.focus();
+  };
+
+  const handleUseSelectedText = (targetField) => {
+    if (!selectedText) return;
+    setFcFields(prev => ({
+      ...prev,
+      [targetField]: selectedText.trim()
+    }));
+  };
+
+  const handleFcAiFormulate = async (customSource = null) => {
+    const rawInput = customSource || Object.values(fcFields).filter(v => v.trim()).join('\n').trim() || selectedText || currentSectionText?.slice(0, 1500) || '';
+    if (!rawInput.trim()) {
+      alert('Выделите текст в книге или введите черновик для формулирования карточки.');
+      return;
+    }
     if (!apiKey) {
       setSettingsOpen(true);
       alert('Укажите API-ключ OpenRouter в настройках.');
@@ -430,7 +475,7 @@ ${currentSectionText.slice(0, 12000)}
     
     const prompt = `You are an expert tutor creating high-yield flashcards for spaced repetition.
 Based on this text, concept, or excerpt from the book "${currentBook?.title || 'Book'}" by ${currentBook?.author || 'Author'}:
-"${input}"
+"${rawInput}"
 
 Generate a single focused, high-retention flashcard that fills out EXACTLY the following fields: ${fieldsList}.
 Make it concise and focused.
@@ -464,7 +509,6 @@ Language: ${targetLang}`;
       const lines = content.split('\n');
       
       for (const line of lines) {
-        // Look for "FieldName:" or "**FieldName**:" at the start of the line
         const matchField = targetAnkiFields.find(f => {
           const regex = new RegExp(`^(?:\\*{0,2}${f}\\*{0,2}):\\s*(.*)`, 'i');
           return regex.test(line);
@@ -1147,142 +1191,258 @@ Language: ${targetLang}`;
         </div>
       )}
 
-      {/* VIEW 3: Inline Flashcard Creator */}
+      {/* VIEW 3: Flashcard Creator & Management */}
       {aiInspectorTab === 'flashcards' && (
-        <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden">
-          {/* Cards list */}
-          <div className="flex-1 overflow-y-auto p-3 sm:p-4 custom-scrollbar flex flex-col gap-2">
-            {/* Section context */}
-            <div className="flex items-center gap-1.5 text-[11px] text-textDim mb-1">
-              <BookOpen size={12} className="text-primaryGlow shrink-0" />
-              <span className="truncate">{chapterTitle} • {sectionTitle}</span>
+        <div className="flex-1 min-w-0 flex flex-col h-full overflow-hidden bg-bgSidebar">
+          {/* Scrollable Container with Form and List */}
+          <div className="flex-1 overflow-y-auto p-3 sm:p-4 custom-scrollbar flex flex-col gap-4">
+            
+            {/* Quick Context / Chapter Header */}
+            <div className="flex items-center justify-between text-xs text-textDim pb-1 border-b border-white/5">
+              <div className="flex items-center gap-1.5 truncate max-w-[70%]">
+                <BookOpen size={13} className="text-primaryGlow shrink-0" />
+                <span className="truncate font-medium text-textMain">{chapterTitle} • {sectionTitle}</span>
+              </div>
+              <div className="flex items-center gap-1 text-[11px] font-mono text-textDim">
+                <span>{bookFlashcards.length} шт.</span>
+              </div>
             </div>
 
-            {bookFlashcards.length === 0 ? (
-              <div className="flex-1 flex flex-col items-center justify-center text-center py-8 opacity-70">
-                <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-3">
-                  <Layers size={24} />
+            {/* Smart Selection Assistant (Shown when text is selected in the book) */}
+            {selectedText && (
+              <div className="p-3 rounded-xl bg-primary/10 border border-primary/30 flex flex-col gap-2 animate-in fade-in">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex items-center gap-1.5 text-xs font-semibold text-primaryGlow">
+                    <Quote size={13} />
+                    <span>Выделено в тексте книги</span>
+                  </div>
+                  <span className="text-[10px] text-textDim font-mono">{selectedText.length} симв.</span>
                 </div>
-                <h4 className="text-sm font-semibold text-white mb-1">Флешкарты</h4>
-                <p className="text-xs text-textMuted max-w-xs leading-relaxed">
-                  Создавайте карточки прямо во время чтения. Напишите вопрос и ответ внизу, или введите текст и нажмите «ИИ» для автоформулировки.
-                </p>
+                <div className="text-xs text-white/90 italic line-clamp-2 bg-black/30 p-2 rounded-lg border border-white/5 font-serif">
+                  "{selectedText}"
+                </div>
+                <div className="flex items-center gap-2 pt-0.5">
+                  <button
+                    type="button"
+                    disabled={fcAiLoading}
+                    onClick={() => handleFcAiFormulate(selectedText)}
+                    className="flex-1 py-1.5 px-2.5 rounded-lg bg-primary hover:bg-primaryGlow text-white text-xs font-semibold flex items-center justify-center gap-1.5 shadow-md shadow-primary/20 transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    {fcAiLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                    <span>Сформулировать через ИИ</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleUseSelectedText(targetAnkiFields[1] || targetAnkiFields[0])}
+                    className="py-1.5 px-2.5 rounded-lg bg-white/5 hover:bg-white/10 text-textMain hover:text-white text-xs transition-colors border border-white/10 cursor-pointer"
+                    title="Вставить цитату в поле ответа"
+                  >
+                    В ответ
+                  </button>
+                </div>
               </div>
-            ) : (
-              <>
+            )}
+
+            {/* CREATION FORM CARD */}
+            <div className="p-3.5 rounded-2xl bg-bgCard border border-borderColor/80 shadow-lg flex flex-col gap-3">
+              <div className="flex items-center justify-between">
+                <div className="text-xs font-bold uppercase tracking-wider text-textMain flex items-center gap-1.5">
+                  <Layers size={13} className="text-primaryGlow" />
+                  <span>Новая карточка</span>
+                </div>
+                
+                {/* Auto Anki Sync Toggle */}
+                <label className="flex items-center gap-1.5 text-[11px] text-textDim hover:text-white cursor-pointer select-none">
+                  <input
+                    type="checkbox"
+                    checked={autoSendToAnki}
+                    onChange={(e) => setAutoSendToAnki(e.target.checked)}
+                    className="rounded accent-primary w-3.5 h-3.5 cursor-pointer"
+                  />
+                  <span>Сразу в Anki</span>
+                </label>
+              </div>
+
+              {/* Dynamic / Standard Anki Fields */}
+              <div className="flex flex-col gap-2.5">
+                {targetAnkiFields.map((field, idx) => {
+                  const isFront = idx === 0;
+                  const label = isFront ? 'Вопрос / Термин' : idx === 1 ? 'Ответ / Определение' : field;
+                  const placeholder = isFront
+                    ? 'Например: В чем разница между LSM-деревом и B-деревом?'
+                    : 'Четкий, тезисный ответ или формула...';
+
+                  return (
+                    <div key={field} className="flex flex-col gap-1">
+                      <div className="flex items-center justify-between text-[11px] text-textDim px-0.5">
+                        <span className="font-semibold text-textMain">{label} <span className="opacity-50 font-normal">({field})</span></span>
+                        {selectedText && (
+                          <button
+                            type="button"
+                            onClick={() => handleUseSelectedText(field)}
+                            className="text-[10px] text-primaryGlow hover:underline cursor-pointer"
+                          >
+                            + Вставить выделение
+                          </button>
+                        )}
+                      </div>
+                      <textarea
+                        ref={isFront ? fcFrontRef : null}
+                        value={fcFields[field] || ''}
+                        onChange={(e) => setFcFields(prev => ({ ...prev, [field]: e.target.value }))}
+                        placeholder={placeholder}
+                        rows={isFront ? 2 : 3}
+                        className="w-full bg-black/40 border border-borderColor focus:border-primary rounded-xl p-2.5 text-xs text-textMain placeholder:text-textDim/50 outline-none resize-y min-h-[46px] max-h-48 custom-scrollbar transition-all"
+                        onKeyDown={(e) => {
+                          if (e.key === 'Enter' && e.ctrlKey) {
+                            e.preventDefault();
+                            handleFcSave();
+                          }
+                        }}
+                      />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Form Actions */}
+              <div className="flex items-center justify-between gap-2 pt-1">
                 <button
-                  onClick={() => setFcShowAll(prev => !prev)}
-                  className="flex items-center justify-between w-full text-xs font-semibold text-textMain px-3 py-2 bg-white/5 hover:bg-white/10 border border-white/10 rounded-lg cursor-pointer transition-all hover:text-white"
+                  type="button"
+                  disabled={fcAiLoading || (!Object.values(fcFields).some(v => v.trim()) && !selectedText)}
+                  onClick={() => handleFcAiFormulate()}
+                  className="text-xs text-primaryGlow hover:text-white flex items-center gap-1.5 bg-primary/10 hover:bg-primary/20 px-3 py-1.5 rounded-xl transition-colors disabled:opacity-40 cursor-pointer border border-primary/20"
+                  title="ИИ сформулирует вопрос и ответ"
                 >
-                  <span className="flex items-center gap-2">
-                    <Layers size={14} className="text-primaryGlow" />
-                    Карточки этой книги ({bookFlashcards.length})
-                  </span>
-                  {fcShowAll ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
+                  {fcAiLoading ? <Loader2 size={13} className="animate-spin" /> : <Sparkles size={13} />}
+                  <span>ИИ помочь</span>
                 </button>
 
-                {fcShowAll && (
-                  <div className="flex flex-col gap-1.5">
-                    {bookFlashcards.slice(0, 50).map((card) => (
-                      <div
-                        key={card.id}
-                        className="p-2.5 rounded-lg bg-bgCard border border-borderColor hover:border-white/20 transition-all flex flex-col gap-1.5 group"
-                      >
-                        <div className="flex items-start justify-between gap-2">
-                          <div className="text-xs font-medium text-white leading-relaxed line-clamp-2 flex-1">
-                            {card.front}
-                          </div>
-                          <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                            <button
-                              onClick={() => handleSendSingleFlashcardToAnki(card)}
-                              disabled={ankiCardSendingId === card.id}
-                              className="p-1 rounded text-primary hover:text-primaryGlow hover:bg-primary/10 transition-colors cursor-pointer disabled:opacity-50"
-                              title="Отправить в Anki"
-                            >
-                              {ankiCardSendingId === card.id ? <Loader2 size={11} className="animate-spin" /> : <Send size={11} />}
-                            </button>
-                            <button
-                              onClick={() => deleteFlashcard(currentBookId, card.id)}
-                              className="p-1 rounded text-textDim hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
-                              title="Удалить"
-                            >
-                              <Trash2 size={11} />
-                            </button>
-                          </div>
+                <div className="flex items-center gap-2">
+                  {Object.values(fcFields).some(v => v.trim()) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const reset = {};
+                        targetAnkiFields.forEach(f => reset[f] = '');
+                        setFcFields(reset);
+                      }}
+                      className="text-xs text-textDim hover:text-white px-2 py-1.5 transition-colors cursor-pointer"
+                      title="Очистить поля"
+                    >
+                      Очистить
+                    </button>
+                  )}
+                  <button
+                    type="button"
+                    disabled={!Object.values(fcFields).some(v => v.trim())}
+                    onClick={handleFcSave}
+                    className="px-3.5 py-1.5 rounded-xl bg-primary hover:bg-primaryGlow disabled:opacity-40 text-white text-xs font-bold transition-all cursor-pointer shadow-md shadow-primary/25 flex items-center gap-1.5"
+                    title="Сохранить карточку (Ctrl+Enter)"
+                  >
+                    <Plus size={14} />
+                    <span>Сохранить</span>
+                  </button>
+                </div>
+              </div>
+
+              {/* Success Notification Banner */}
+              {fcSavedFlash && (
+                <div className="flex items-center gap-1.5 text-xs text-accentEmerald bg-accentEmerald/10 border border-accentEmerald/20 rounded-xl px-3 py-2 animate-in fade-in duration-200">
+                  <Check size={14} className="shrink-0" />
+                  <span className="font-medium">{fcSavedFlash}</span>
+                </div>
+              )}
+            </div>
+
+            {/* SAVED CARDS LIST SECTION */}
+            <div className="flex flex-col gap-2 pt-1 pb-4">
+              <div className="flex items-center justify-between px-0.5">
+                <span className="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>Карточки книги</span>
+                  <span className="text-[11px] font-mono px-2 py-0.2 rounded-full bg-white/10 text-textDim">
+                    {bookFlashcards.length}
+                  </span>
+                </span>
+
+                {bookFlashcards.length > 0 && (
+                  <button
+                    type="button"
+                    onClick={handleFcSendAllToAnki}
+                    disabled={fcAnkiSending}
+                    className="text-xs text-primaryGlow hover:text-white flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-primary/10 hover:bg-primary/20 border border-primary/20 transition-all cursor-pointer disabled:opacity-50 font-medium"
+                    title="Экспортировать все карточки книги в Anki"
+                  >
+                    {fcAnkiSending ? <Loader2 size={12} className="animate-spin" /> : <Send size={12} />}
+                    <span>Экспорт всех в Anki</span>
+                  </button>
+                )}
+              </div>
+
+              {bookFlashcards.length === 0 ? (
+                <div className="p-6 rounded-2xl bg-white/[0.02] border border-dashed border-white/10 flex flex-col items-center justify-center text-center">
+                  <div className="w-10 h-10 rounded-full bg-primary/10 flex items-center justify-center text-primary mb-2">
+                    <Layers size={18} />
+                  </div>
+                  <p className="text-xs text-textMuted max-w-xs">
+                    Пока нет карточек. Заполните форму выше или выделите текст в книге для автогенерации.
+                  </p>
+                </div>
+              ) : (
+                <div className="flex flex-col gap-2">
+                  {bookFlashcards.map((card) => (
+                    <div
+                      key={card.id}
+                      className="p-3 rounded-xl bg-bgCard border border-borderColor hover:border-white/20 transition-all flex flex-col gap-2 group shadow-sm"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="text-xs font-semibold text-white leading-relaxed flex-1">
+                          {card.front}
                         </div>
-                        <div className="text-[11px] text-textMuted leading-relaxed pl-2 border-l-2 border-primary/30 line-clamp-2">
-                          {card.back}
-                        </div>
-                        <div className="flex items-center gap-2 text-[10px] text-textDim font-mono">
-                          <span>Повторений: {card.repetitions || 0}</span>
-                          <span>•</span>
-                          <span>Интервал: {card.interval || 1} дн.</span>
+                        <div className="flex items-center gap-1 shrink-0 opacity-80 group-hover:opacity-100 transition-opacity">
+                          <button
+                            type="button"
+                            onClick={() => handleSendSingleFlashcardToAnki(card)}
+                            disabled={ankiCardSendingId === card.id}
+                            className="p-1.5 rounded-lg text-primary hover:text-white hover:bg-primary/20 transition-colors cursor-pointer disabled:opacity-50"
+                            title="Отправить в Anki"
+                          >
+                            {ankiCardSendingId === card.id ? <Loader2 size={13} className="animate-spin" /> : <Send size={13} />}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleEditCard(card)}
+                            className="p-1.5 rounded-lg text-textDim hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                            title="Редактировать в форме"
+                          >
+                            <Edit2 size={13} />
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => deleteFlashcard(currentBookId, card.id)}
+                            className="p-1.5 rounded-lg text-textDim hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                            title="Удалить карточку"
+                          >
+                            <Trash2 size={13} />
+                          </button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
-              </>
-            )}
-          </div>
 
-          {/* Bottom inline card creator — always visible */}
-          <div className="p-3 bg-black/50 border-t border-borderColor shrink-0 flex flex-col gap-2">
-            {/* Success flash */}
-            {fcSavedFlash && (
-              <div className="flex items-center gap-1.5 text-xs text-accentEmerald bg-accentEmerald/10 border border-accentEmerald/20 rounded-lg px-2.5 py-1.5 animate-in fade-in duration-200">
-                <Check size={13} />
-                <span>{fcSavedFlash}</span>
-              </div>
-            )}
+                      <div className="text-xs text-textMuted leading-relaxed pl-2.5 border-l-2 border-primary/40 bg-black/20 p-1.5 rounded-r-lg font-sans">
+                        {card.back}
+                      </div>
 
-            <div className="flex flex-col gap-1.5">
-              {targetAnkiFields.map((field, idx) => (
-                <textarea
-                  key={field}
-                  ref={idx === 0 ? fcFrontRef : null}
-                  value={fcFields[field] || ''}
-                  onChange={(e) => setFcFields(prev => ({ ...prev, [field]: e.target.value }))}
-                  placeholder={`${field}...`}
-                  rows={2}
-                  className="w-full bg-bgCard border border-borderColor focus:border-primary rounded-lg p-2 text-xs text-textMain outline-none resize-y min-h-[40px] max-h-40 custom-scrollbar transition-colors"
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' && e.ctrlKey) {
-                      e.preventDefault();
-                      handleFcSave();
-                    }
-                  }}
-                />
-              ))}
+                      {card.sectionTitle && (
+                        <div className="text-[10px] text-textDim truncate font-sans opacity-70">
+                          § {card.sectionTitle}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
 
-            <div className="flex items-center justify-between gap-2">
-              <button
-                type="button"
-                disabled={fcAiLoading || !Object.values(fcFields).some(v => v.trim())}
-                onClick={handleFcAiFormulate}
-                className="text-[11px] text-primaryGlow hover:text-white flex items-center gap-1 bg-primary/10 hover:bg-primary/20 px-2.5 py-1.5 rounded-lg transition-colors disabled:opacity-40 cursor-pointer border border-primary/20"
-                title="ИИ сформулирует вопрос и ответ из вашего текста"
-              >
-                {fcAiLoading ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
-                <span>ИИ сформулировать</span>
-              </button>
-
-              <button
-                type="button"
-                disabled={!Object.values(fcFields).some(v => v.trim())}
-                onClick={handleFcSave}
-                className="px-3 py-1.5 rounded-lg bg-primary hover:bg-primaryGlow disabled:opacity-40 text-white text-xs font-semibold transition-all cursor-pointer shadow-md shadow-primary/20 flex items-center gap-1.5"
-                title="Сохранить карточку (Ctrl+Enter)"
-              >
-                <Plus size={13} />
-                <span>Сохранить</span>
-              </button>
-            </div>
-
-            <div className="text-[10px] text-textDim px-1">
-              Ctrl+Enter — сохранить
-            </div>
           </div>
         </div>
       )}
