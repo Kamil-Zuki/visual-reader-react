@@ -9,7 +9,8 @@ import {
   applyThemeToContent,
   epubThemeIframeBackground,
 } from '../utils/epubReaderThemes';
-import { ChevronLeft, ChevronRight, PenTool, Sparkles, Bookmark, CheckCircle2, X } from 'lucide-react';
+import { ChevronLeft, ChevronRight, PenTool, Sparkles, Bookmark, CheckCircle2, X, ZoomIn, ZoomOut } from 'lucide-react';
+import ImageZoomModal from './ImageZoomModal';
 
 const HIGHLIGHT_COLORS = [
   { id: 'yellow', value: 'rgba(245, 158, 11, 0.45)', dotColor: '#f59e0b', label: 'Янтарный' },
@@ -67,6 +68,8 @@ export default function EpubReader() {
     clearEpubResume,
     epubReaderTheme,
     setEpubReaderTheme,
+    readerFontSize,
+    setReaderFontSize,
   } = useStore();
 
   const hostRef = useRef(null);
@@ -76,12 +79,18 @@ export default function EpubReader() {
   const appliedCfisRef = useRef(new Set());
   const skipNavOnceRef = useRef(false);
   const themeRef = useRef(epubReaderTheme);
+  const fontSizeRef = useRef(readerFontSize);
 
   useEffect(() => {
     themeRef.current = epubReaderTheme;
   }, [epubReaderTheme]);
 
+  useEffect(() => {
+    fontSizeRef.current = readerFontSize;
+  }, [readerFontSize]);
+
   const [epubSelection, setEpubSelection] = useState(null);
+  const [zoomedImage, setZoomedImage] = useState(null);
 
   const chapters = currentBook?.chapters || [];
   const section = chapters[activeChapterIdx]?.sections?.[activeSectionIdx];
@@ -216,7 +225,7 @@ export default function EpubReader() {
         });
         renditionRef.current = rendition;
 
-        selectEpubReaderTheme(rendition, themeRef.current);
+        selectEpubReaderTheme(rendition, themeRef.current, fontSizeRef.current);
 
         if (shouldResume) {
           await rendition.display(savedCfi);
@@ -248,7 +257,7 @@ export default function EpubReader() {
         });
 
         const syncIframeText = () => {
-          selectEpubReaderTheme(rendition, themeRef.current);
+          selectEpubReaderTheme(rendition, themeRef.current, fontSizeRef.current);
           try {
             const contents = rendition.getContents();
             const texts = (Array.isArray(contents) ? contents : [contents])
@@ -267,8 +276,23 @@ export default function EpubReader() {
 
         // epub.js шлёт selected, но не «снято выделение» — слушаем iframe
         rendition.hooks.content.register((contents) => {
-          applyThemeToContent(contents, themeRef.current);
+          applyThemeToContent(contents, themeRef.current, fontSizeRef.current);
           if (!contents?.document) return;
+
+          // Delegate image clicks inside iframe to ImageZoomModal
+          const onIframeDocClick = (e) => {
+            const target = e.target;
+            if (target && target.tagName === 'IMG') {
+              e.preventDefault();
+              e.stopPropagation();
+              setZoomedImage({
+                src: target.currentSrc || target.src,
+                alt: target.alt || target.title || '',
+              });
+            }
+          };
+          contents.document.addEventListener('click', onIframeDocClick);
+
           let selTimer = null;
           const onSelectionChange = () => {
             clearTimeout(selTimer);
@@ -328,8 +352,8 @@ export default function EpubReader() {
   useEffect(() => {
     const rendition = renditionRef.current;
     if (!rendition) return;
-    selectEpubReaderTheme(rendition, epubReaderTheme);
-  }, [epubReaderTheme]);
+    selectEpubReaderTheme(rendition, epubReaderTheme, readerFontSize);
+  }, [epubReaderTheme, readerFontSize]);
 
   useEffect(() => {
     if (!epubSelection) return;
@@ -551,6 +575,36 @@ export default function EpubReader() {
               </button>
             ))}
           </div>
+
+          {/* Font size control */}
+          <div className="flex items-center gap-1 bg-white/5 border border-white/10 rounded-lg p-0.5">
+            <button
+              type="button"
+              onClick={() => setReaderFontSize((s) => s - 10)}
+              disabled={readerFontSize <= 75}
+              className="p-1.5 rounded hover:bg-white/10 text-textDim hover:text-white disabled:opacity-30 transition-colors"
+              title="Уменьшить текст"
+            >
+              <ZoomOut size={16} />
+            </button>
+            <button
+              type="button"
+              onClick={() => setReaderFontSize(100)}
+              className="px-2 py-1 text-xs font-mono font-medium text-textMain hover:text-white hover:bg-white/5 rounded transition-colors"
+              title="Сбросить размер шрифта (100%)"
+            >
+              {readerFontSize}%
+            </button>
+            <button
+              type="button"
+              onClick={() => setReaderFontSize((s) => s + 10)}
+              disabled={readerFontSize >= 200}
+              className="p-1.5 rounded hover:bg-white/10 text-textDim hover:text-white disabled:opacity-30 transition-colors"
+              title="Увеличить текст"
+            >
+              <ZoomIn size={16} />
+            </button>
+          </div>
           <button
             type="button"
             onClick={goPrev}
@@ -624,6 +678,14 @@ export default function EpubReader() {
           </div>
         </div>
       )}
+
+      {/* Fullscreen Image Zoom Modal */}
+      <ImageZoomModal
+        isOpen={Boolean(zoomedImage)}
+        onClose={() => setZoomedImage(null)}
+        src={zoomedImage?.src}
+        alt={zoomedImage?.alt}
+      />
     </main>
   );
 }

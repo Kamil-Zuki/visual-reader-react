@@ -1,8 +1,9 @@
 import React, { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
+import ImageZoomModal from './ImageZoomModal';
 
 const INLINE_TOKEN_REGEX = new RegExp(
-  '(`[^`]+`|\\*\\*\\*[^*]+?\\*\\*\\*|___[^_]+?___|\\*\\*[^*]+?\\*\\*|__[^_]+?__|\\*[^*]+?\\*|_[^_]+?_|~~[^~]+?~~|\\[[^\\]]*?\\]\\([^)]*?\\))',
+  '(!\\[[^\\]]*?\\]\\([^)]*?\\)|`[^`]+`|\\*\\*\\*[^*]+?\\*\\*\\*|___[^_]+?___|\\*\\*[^*]+?\\*\\*|__[^_]+?__|\\*[^*]+?\\*|_[^_]+?_|~~[^~]+?~~|\\[[^\\]]*?\\]\\([^)]*?\\))',
   'g'
 );
 
@@ -29,7 +30,7 @@ function isTableSeparatorLine(str) {
  * - ~~strikethrough~~
  * - [link text](url)
  */
-export function renderInlineMarkdown(text) {
+export function renderInlineMarkdown(text, onImageClick) {
   if (!text) return null;
 
   const parts = text.split(INLINE_TOKEN_REGEX);
@@ -56,7 +57,7 @@ export function renderInlineMarkdown(text) {
     ) {
       return (
         <strong key={index} className="font-bold italic text-white">
-          {renderInlineMarkdown(part.slice(3, -3))}
+          {renderInlineMarkdown(part.slice(3, -3), onImageClick)}
         </strong>
       );
     }
@@ -68,7 +69,7 @@ export function renderInlineMarkdown(text) {
     ) {
       return (
         <strong key={index} className="font-semibold text-white">
-          {renderInlineMarkdown(part.slice(2, -2))}
+          {renderInlineMarkdown(part.slice(2, -2), onImageClick)}
         </strong>
       );
     }
@@ -80,7 +81,7 @@ export function renderInlineMarkdown(text) {
     ) {
       return (
         <em key={index} className="italic text-textMain/90">
-          {renderInlineMarkdown(part.slice(1, -1))}
+          {renderInlineMarkdown(part.slice(1, -1), onImageClick)}
         </em>
       );
     }
@@ -89,8 +90,22 @@ export function renderInlineMarkdown(text) {
     if (part.startsWith('~~') && part.endsWith('~~') && part.length >= 4) {
       return (
         <del key={index} className="line-through text-textDim">
-          {renderInlineMarkdown(part.slice(2, -2))}
+          {renderInlineMarkdown(part.slice(2, -2), onImageClick)}
         </del>
+      );
+    }
+
+    // Image: ![alt](url)
+    const imgMatch = part.match(/^!\[(.*?)\]\((.*?)\)$/);
+    if (imgMatch) {
+      return (
+        <img
+          key={index}
+          src={imgMatch[2]}
+          alt={imgMatch[1] || ''}
+          onClick={() => onImageClick?.({ src: imgMatch[2], alt: imgMatch[1] || '' })}
+          className="my-2 max-h-72 max-w-full rounded-lg border border-white/10 object-contain cursor-zoom-in hover:opacity-90 transition-opacity inline-block"
+        />
       );
     }
 
@@ -339,9 +354,12 @@ function parseMarkdownBlocks(text) {
 }
 
 export default function MarkdownRenderer({ content, className = '' }) {
+  const [zoomedImage, setZoomedImage] = useState(null);
+
   if (!content) return null;
 
   const blocks = parseMarkdownBlocks(content);
+  const handleImageClick = (img) => setZoomedImage(img);
 
   return (
     <div className={`text-xs leading-relaxed space-y-2 break-words text-textMain ${className}`}>
@@ -354,27 +372,27 @@ export default function MarkdownRenderer({ content, className = '' }) {
             if (block.level === 1) {
               return (
                 <h2 key={idx} className="font-bold text-primaryGlow text-sm pt-2 pb-0.5 border-b border-white/10">
-                  {renderInlineMarkdown(block.text)}
+                  {renderInlineMarkdown(block.text, handleImageClick)}
                 </h2>
               );
             }
             if (block.level === 2) {
               return (
                 <h3 key={idx} className="font-bold text-white text-xs pt-2 pb-0.5">
-                  {renderInlineMarkdown(block.text)}
+                  {renderInlineMarkdown(block.text, handleImageClick)}
                 </h3>
               );
             }
             if (block.level === 3) {
               return (
                 <h4 key={idx} className="font-semibold text-white text-xs pt-1.5 pb-0.5">
-                  {renderInlineMarkdown(block.text)}
+                  {renderInlineMarkdown(block.text, handleImageClick)}
                 </h4>
               );
             }
             return (
               <h5 key={idx} className="font-medium text-primaryGlow/90 text-xs pt-1 pb-0.5">
-                {renderInlineMarkdown(block.text)}
+                {renderInlineMarkdown(block.text, handleImageClick)}
               </h5>
             );
           }
@@ -389,7 +407,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
                 className="border-l-2 border-primary/70 bg-white/[0.03] px-3 py-1.5 my-1.5 rounded-r text-textMuted italic text-xs space-y-1"
               >
                 {block.text.split('\n').map((line, lIdx) => (
-                  <p key={lIdx}>{renderInlineMarkdown(line)}</p>
+                  <p key={lIdx}>{renderInlineMarkdown(line, handleImageClick)}</p>
                 ))}
               </blockquote>
             );
@@ -405,7 +423,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
               <ListTag key={idx} className={listClass}>
                 {block.items.map((item, iIdx) => (
                   <li key={iIdx} className="text-textMain leading-relaxed pl-0.5">
-                    {renderInlineMarkdown(item)}
+                    {renderInlineMarkdown(item, handleImageClick)}
                   </li>
                 ))}
               </ListTag>
@@ -420,7 +438,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
                     <tr>
                       {block.headers.map((h, hIdx) => (
                         <th key={hIdx} className="px-2.5 py-1.5 text-left font-semibold text-white">
-                          {renderInlineMarkdown(h)}
+                          {renderInlineMarkdown(h, handleImageClick)}
                         </th>
                       ))}
                     </tr>
@@ -430,7 +448,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
                       <tr key={rIdx} className="hover:bg-white/[0.02]">
                         {row.map((cell, cIdx) => (
                           <td key={cIdx} className="px-2.5 py-1.5 text-textMain">
-                            {renderInlineMarkdown(cell)}
+                            {renderInlineMarkdown(cell, handleImageClick)}
                           </td>
                         ))}
                       </tr>
@@ -446,7 +464,7 @@ export default function MarkdownRenderer({ content, className = '' }) {
               <p key={idx} className="text-textMain leading-relaxed">
                 {block.text.split('\n').map((line, lIdx, arr) => (
                   <React.Fragment key={lIdx}>
-                    {renderInlineMarkdown(line)}
+                    {renderInlineMarkdown(line, handleImageClick)}
                     {lIdx < arr.length - 1 && <br />}
                   </React.Fragment>
                 ))}
@@ -454,6 +472,13 @@ export default function MarkdownRenderer({ content, className = '' }) {
             );
         }
       })}
+
+      <ImageZoomModal
+        isOpen={Boolean(zoomedImage)}
+        onClose={() => setZoomedImage(null)}
+        src={zoomedImage?.src}
+        alt={zoomedImage?.alt}
+      />
     </div>
   );
 }

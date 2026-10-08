@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useStore } from '../store/useStore';
-import { ChevronLeft, ChevronRight, Sparkles, CheckCircle2, Bookmark, PenTool, Layers, BookMarked, Award } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Sparkles, CheckCircle2, Bookmark, PenTool, Layers, BookMarked, Award, Type, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import ImageZoomModal from './ImageZoomModal';
 
 const HIGHLIGHT_COLORS = [
   { id: 'yellow', value: 'rgba(245, 158, 11, 0.16)', dotColor: '#f59e0b', label: 'Янтарный' },
@@ -98,10 +99,13 @@ export default function Reader() {
     setGlossaryOpen,
     addGlossaryTerm,
     setReaderSelectionText,
+    readerFontSize,
+    setReaderFontSize,
   } = useStore();
   const contentRef = useRef(null);
   const [selectionRange, setSelectionRange] = useState(null);
   const [selectedText, setSelectedText] = useState('');
+  const [zoomedImage, setZoomedImage] = useState(null);
 
   const chapters = currentBook?.chapters || currentBook?.structure || [];
   const activeChapter = chapters[activeChapterIdx];
@@ -224,6 +228,25 @@ export default function Reader() {
         // Scroll to top when section changes normally
         contentRef.current.parentElement.scrollTop = 0;
       }
+
+      // Add image click listener for magnifying images
+      const container = contentRef.current;
+      const handleImageClick = (e) => {
+        const target = e.target;
+        if (target && target.tagName === 'IMG') {
+          e.preventDefault();
+          e.stopPropagation();
+          setZoomedImage({
+            src: target.currentSrc || target.src,
+            alt: target.alt || target.title || '',
+          });
+        }
+      };
+      container?.addEventListener('click', handleImageClick);
+
+      return () => {
+        container?.removeEventListener('click', handleImageClick);
+      };
     }
   }, [currentBook, activeChapterIdx, activeSectionIdx, section, highlights, currentBookId, pendingScrollHighlightId, pendingSearchScroll]);
 
@@ -316,36 +339,69 @@ export default function Reader() {
               {section?.title || chapterTitle}
             </h1>
           </div>
-          {section?.id && (
-            <div className="flex gap-2">
-              <button 
-                onClick={toggleBookmark}
-                className={`shrink-0 flex items-center justify-center p-2 sm:px-3 sm:py-2 rounded-lg border transition-colors ${
-                  isBookmarked ? 'bg-primary/20 text-primaryGlow border-primary/30' : 'bg-bgSidebar text-textDim border-borderColor hover:text-white hover:bg-white/5'
-                }`}
-                title={isBookmarked ? 'Удалить закладку' : 'Добавить закладку'}
+          <div className="flex items-center gap-2">
+            {/* Font size control */}
+            <div className="flex items-center gap-1 bg-bgSidebar border border-borderColor rounded-lg p-0.5">
+              <button
+                type="button"
+                onClick={() => setReaderFontSize((s) => s - 10)}
+                disabled={readerFontSize <= 75}
+                className="p-1.5 rounded hover:bg-white/10 text-textDim hover:text-white disabled:opacity-30 transition-colors"
+                title="Уменьшить текст"
               >
-                <Bookmark size={20} className={isBookmarked ? 'opacity-100 fill-primaryGlow' : 'opacity-50'} />
+                <ZoomOut size={16} />
               </button>
-              <button 
-                onClick={toggleReadStatus}
-                className={`shrink-0 flex items-center justify-center p-2 sm:px-3 sm:py-2 rounded-lg border transition-colors ${
-                  isRead ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-bgSidebar text-textDim border-borderColor hover:text-white hover:bg-white/5'
-                }`}
-                title={isRead ? 'Отметить как непрочитанное' : 'Отметить как прочитанное'}
+              <button
+                type="button"
+                onClick={() => setReaderFontSize(100)}
+                className="px-2 py-1 text-xs font-mono font-medium text-textMain hover:text-white hover:bg-white/5 rounded transition-colors"
+                title="Сбросить размер шрифта (100%)"
               >
-                <CheckCircle2 size={20} className={`sm:mr-2 ${isRead ? 'opacity-100' : 'opacity-50'}`} />
-                <span className="hidden sm:inline text-sm font-medium">
-                  {isRead ? 'Прочитано' : 'Отметить'}
-                </span>
+                {readerFontSize}%
+              </button>
+              <button
+                type="button"
+                onClick={() => setReaderFontSize((s) => s + 10)}
+                disabled={readerFontSize >= 200}
+                className="p-1.5 rounded hover:bg-white/10 text-textDim hover:text-white disabled:opacity-30 transition-colors"
+                title="Увеличить текст"
+              >
+                <ZoomIn size={16} />
               </button>
             </div>
-          )}
+
+            {section?.id && (
+              <div className="flex gap-2">
+                <button 
+                  onClick={toggleBookmark}
+                  className={`shrink-0 flex items-center justify-center p-2 sm:px-3 sm:py-2 rounded-lg border transition-colors ${
+                    isBookmarked ? 'bg-primary/20 text-primaryGlow border-primary/30' : 'bg-bgSidebar text-textDim border-borderColor hover:text-white hover:bg-white/5'
+                  }`}
+                  title={isBookmarked ? 'Удалить закладку' : 'Добавить закладку'}
+                >
+                  <Bookmark size={20} className={isBookmarked ? 'opacity-100 fill-primaryGlow' : 'opacity-50'} />
+                </button>
+                <button 
+                  onClick={toggleReadStatus}
+                  className={`shrink-0 flex items-center justify-center p-2 sm:px-3 sm:py-2 rounded-lg border transition-colors ${
+                    isRead ? 'bg-green-500/20 text-green-400 border-green-500/30' : 'bg-bgSidebar text-textDim border-borderColor hover:text-white hover:bg-white/5'
+                  }`}
+                  title={isRead ? 'Отметить как непрочитанное' : 'Отметить как прочитанное'}
+                >
+                  <CheckCircle2 size={20} className={`sm:mr-2 ${isRead ? 'opacity-100' : 'opacity-50'}`} />
+                  <span className="hidden sm:inline text-sm font-medium">
+                    {isRead ? 'Прочитано' : 'Отметить'}
+                  </span>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         
         <div 
           ref={contentRef}
-          className="prose prose-invert prose-base sm:prose-lg max-w-none prose-headings:text-white prose-p:text-textMain prose-p:leading-relaxed prose-a:text-primaryGlow prose-pre:bg-bgSidebar prose-pre:border-borderColor prose-img:rounded-lg overflow-x-auto"
+          style={{ fontSize: `${readerFontSize}%` }}
+          className="prose prose-invert prose-base sm:prose-lg max-w-none prose-headings:text-white prose-p:text-textMain prose-p:leading-relaxed prose-a:text-primaryGlow prose-pre:bg-bgSidebar prose-pre:border-borderColor prose-img:rounded-lg prose-img:cursor-zoom-in prose-img:transition-transform hover:prose-img:opacity-95 overflow-x-auto"
         ></div>
 
         {/* Self-Test / Quiz Banner */}
@@ -496,6 +552,14 @@ export default function Reader() {
           </div>
         </div>
       )}
+
+      {/* Fullscreen Image Zoom Modal */}
+      <ImageZoomModal
+        isOpen={Boolean(zoomedImage)}
+        onClose={() => setZoomedImage(null)}
+        src={zoomedImage?.src}
+        alt={zoomedImage?.alt}
+      />
     </main>
   );
 }

@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { useStore } from '../store/useStore';
-import { X, Key, Cpu, Sparkles, Globe, MessageSquareCode, RotateCcw, Check, Plus, Edit2, Trash2, Cloud, Layers, Loader2 } from 'lucide-react';
+import { X, Key, Cpu, Sparkles, Globe, MessageSquareCode, RotateCcw, Check, Plus, Edit2, Trash2, Cloud, Layers, Loader2, Type, ZoomIn, ZoomOut } from 'lucide-react';
 import {
   testAnkiConnection,
   fetchAnkiCatalog,
@@ -20,6 +20,7 @@ export default function SettingsModal() {
     customCommands, addCustomCommand, updateCustomCommand, deleteCustomCommand, resetCustomCommands,
     setSyncModalOpen, syncStatus, syncSettings,
     ankiSettings, setAnkiSettings,
+    readerFontSize, setReaderFontSize,
   } = useStore();
   
   const [activeTab, setActiveTab] = useState('general'); // 'general' | 'prompts'
@@ -28,6 +29,7 @@ export default function SettingsModal() {
   const [localModel, setLocalModel] = useState(model);
   const [localLanguage, setLocalLanguage] = useState(language);
   const [localPrompts, setLocalPrompts] = useState(prompts);
+  const [localFontSize, setLocalFontSize] = useState(readerFontSize || 100);
   const [activePromptTab, setActivePromptTab] = useState('diagram'); // 'diagram' | 'analogy' | 'summary'
 
   const [commandModalOpen, setCommandModalOpen] = useState(false);
@@ -52,6 +54,7 @@ export default function SettingsModal() {
       setLocalModel(model || 'openrouter/free');
       setLocalLanguage(language || 'ru');
       setLocalPrompts(prompts);
+      setLocalFontSize(readerFontSize || 100);
       setSavedSuccess(false);
       setLocalAnkiSettings({ ...DEFAULT_ANKI_SETTINGS, ...ankiSettings });
       setAnkiTestMessage('');
@@ -153,6 +156,7 @@ export default function SettingsModal() {
     setModel(localModel || 'openrouter/free');
     setLanguage(localLanguage);
     setPrompts(localPrompts);
+    setReaderFontSize(localFontSize);
     setAnkiSettings(localAnkiSettings);
     setSavedSuccess(true);
     setTimeout(() => {
@@ -333,6 +337,61 @@ export default function SettingsModal() {
               </select>
               <span className="text-[11px] text-textDim">
                 На этом языке ИИ будет составлять объяснения, схемы и ответы на ваши команды.
+              </span>
+            </div>
+
+            {/* Reader Text Size setting */}
+            <div className="flex flex-col gap-2 p-3 bg-white/[0.02] border border-borderColor rounded-xl">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-semibold text-textMain flex items-center gap-1.5 uppercase tracking-wider">
+                  <Type size={13} className="text-primaryGlow" /> Размер текста в читалке
+                </label>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-mono font-bold text-primaryGlow bg-primary/10 border border-primary/20 px-2 py-0.5 rounded">
+                    {localFontSize}%
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setLocalFontSize(100)}
+                    className="text-[10px] text-textDim hover:text-white px-1.5 py-0.5 rounded hover:bg-white/5 border border-white/5 transition-colors"
+                    title="Сбросить на 100%"
+                  >
+                    100%
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setLocalFontSize((s) => Math.max(75, s - 10))}
+                  disabled={localFontSize <= 75}
+                  className="p-1.5 rounded-lg bg-black/40 hover:bg-white/10 text-textDim hover:text-white disabled:opacity-30 border border-borderColor transition-colors"
+                  title="Уменьшить шрифт"
+                >
+                  <ZoomOut size={15} />
+                </button>
+                <input
+                  type="range"
+                  min="75"
+                  max="200"
+                  step="5"
+                  value={localFontSize}
+                  onChange={(e) => setLocalFontSize(Number(e.target.value))}
+                  className="flex-1 accent-primary cursor-pointer"
+                />
+                <button
+                  type="button"
+                  onClick={() => setLocalFontSize((s) => Math.min(200, s + 10))}
+                  disabled={localFontSize >= 200}
+                  className="p-1.5 rounded-lg bg-black/40 hover:bg-white/10 text-textDim hover:text-white disabled:opacity-30 border border-borderColor transition-colors"
+                  title="Увеличить шрифт"
+                >
+                  <ZoomIn size={15} />
+                </button>
+              </div>
+              <span className="text-[11px] text-textDim">
+                Настройка размера текста для HTML и EPUB книг (диапазон: 75% — 200%).
               </span>
             </div>
 

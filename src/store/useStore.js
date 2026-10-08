@@ -68,6 +68,14 @@ export const useStore = create((set) => ({
   readerSelectionText: '',
   setReaderSelectionText: (text) => set({ readerSelectionText: (text || '').trim() }),
 
+  readerFontSize: 100, // percentage: 80% - 200%
+  setReaderFontSize: (size) => {
+    const val = typeof size === 'function' ? size(useStore.getState().readerFontSize) : size;
+    const clamped = Math.min(Math.max(val, 75), 200);
+    setStoreValue('reader_font_size', clamped);
+    set({ readerFontSize: clamped });
+  },
+
   epubReaderTheme: 'dark',
   setEpubReaderTheme: (theme) => {
     setStoreValue('epub_reader_theme', theme);
@@ -591,6 +599,7 @@ export async function initStoreFromDB() {
     readingLog,
     epubLocations,
     epubReaderTheme,
+    readerFontSize,
     ankiSettings,
     conceptGraphs
   ] = await Promise.all([
@@ -621,6 +630,7 @@ export async function initStoreFromDB() {
     getStoreValue('ddia_reading_log', {}),
     getStoreValue('epub_locations', {}),
     getStoreValue('epub_reader_theme', 'dark'),
+    getStoreValue('reader_font_size', 100),
     getStoreValue('anki_settings', null),
     getStoreValue('ddia_concept_graphs', {})
   ]);
@@ -670,6 +680,7 @@ export async function initStoreFromDB() {
     epubLocations: epubLocations || {},
     epubReaderTheme:
       ['dark', 'light', 'sepia', 'book'].includes(epubReaderTheme) ? epubReaderTheme : 'dark',
+    readerFontSize: typeof readerFontSize === 'number' ? Math.min(Math.max(readerFontSize, 75), 200) : 100,
     ankiSettings: ankiSettings
       ? { ...DEFAULT_ANKI_SETTINGS, ...ankiSettings }
       : { ...DEFAULT_ANKI_SETTINGS },

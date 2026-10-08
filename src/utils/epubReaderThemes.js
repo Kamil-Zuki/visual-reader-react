@@ -117,8 +117,8 @@ export const IFRAME_BG = {
 
 const THEME_STYLE_ID = 'visual-reader-custom-theme';
 
-/** Применяет тему непосредственно к DOM конкретного Contents (iframe документа) */
-export function applyThemeToContent(content, themeId) {
+/** Применяет тему и размер шрифта непосредственно к DOM конкретного Contents (iframe документа) */
+export function applyThemeToContent(content, themeId, fontSize = 100) {
   if (!content?.document) return;
   const doc = content.document;
   const id = EPUB_READER_THEME_IDS.includes(themeId) ? themeId : 'dark';
@@ -142,15 +142,24 @@ export function applyThemeToContent(content, themeId) {
     }
   }
 
-  styleEl.textContent = CSS[id] || '';
+  const baseCss = CSS[id] || '';
+  const fontCss = `
+html, body {
+  font-size: ${fontSize}% !important;
+}
+img {
+  cursor: zoom-in !important;
+}
+`;
+  styleEl.textContent = baseCss + '\n' + fontCss;
 
   if (doc.body) {
     doc.body.setAttribute('data-epub-theme', id);
   }
 }
 
-/** Применить тему ко всем уже открытым contents в rendition */
-export function selectEpubReaderTheme(rendition, themeId) {
+/** Применить тему и размер шрифта ко всем уже открытым contents в rendition */
+export function selectEpubReaderTheme(rendition, themeId, fontSize = 100) {
   const id = EPUB_READER_THEME_IDS.includes(themeId) ? themeId : 'dark';
   if (!rendition) return IFRAME_BG[id];
 
@@ -158,7 +167,7 @@ export function selectEpubReaderTheme(rendition, themeId) {
     const contents = rendition.getContents?.() || [];
     const list = Array.isArray(contents) ? contents : [contents];
     list.forEach((content) => {
-      applyThemeToContent(content, id);
+      applyThemeToContent(content, id, fontSize);
     });
   } catch (err) {
     console.warn('[selectEpubReaderTheme] failed to apply theme:', err);
